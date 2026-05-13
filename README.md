@@ -1,6 +1,12 @@
+# RUN
+```bash
+cd ~/Documents/ce_comedians/project
+source venv/bin/activate
+python3 main.py
+```
+
 # HƯỚNG DẪN CÀI ĐẶT PROJECT — Drowsiness & Distraction Detection
 > Raspberry Pi 4 · Debian GNU/Linux 13 (trixie) · ARM64 (aarch64) · Python 3.11.9 · Webcam USB
-
 ---
 
 ## 1. THÔNG TIN MÔI TRƯỜNG

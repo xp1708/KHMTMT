@@ -42,7 +42,7 @@ HEAD_DROP_SIGN = 1
 # =========================
 # PHAT HIEN DIEN THOAI
 # =========================
-PHONE_MODEL_PATH = "yolo11n.pt"
+PHONE_MODEL_PATH = "yolo11n.onnx"
 PHONE_CONF_THRESHOLD = 0.45
 PHONE_USE_SECONDS = 1.5
 PHONE_DETECT_EVERY_N_FRAMES = 4
@@ -288,57 +288,61 @@ def median_of_tuples(data):
 def load_phone_model():
     if not USE_PHONE_DETECTION:
         return None, {}
-
     try:
-        from ultralytics import YOLO
-        model = YOLO(PHONE_MODEL_PATH)
-        names = model.names if hasattr(model, "names") else {}
-        return model, names
+        import onnxruntime as ort
+        import ast
+        session = ort.InferenceSession(
+            PHONE_MODEL_PATH,
+            providers=["CPUExecutionProvider"]
+        )
+        meta = session.get_modelmeta().custom_metadata_map
+        names = {}
+        if "names" in meta:
+            names = ast.literal_eval(meta["names"])
+        return session, names
     except Exception as e:
         print(f"[WARN] Khong tai duoc model phone: {e}")
         return None, {}
 
 
 def detect_phone(model, frame_bgr):
-    """
-    Tra ve:
-    [
-        {
-            "box": (x1, y1, x2, y2),
-            "conf": conf,
-            "label": label
-        },
-        ...
-    ]
-    """
     detections = []
     if model is None:
         return detections
-
     try:
-        results = model.predict(frame_bgr, verbose=False)
-        if len(results) == 0:
-            return detections
+        PHONE_CLASS_ID = 67
+        img = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        img_resized = cv2.resize(img, (640, 640))
+        img_input = img_resized.astype(np.float32) / 255.0
+        img_input = np.transpose(img_input, (2, 0, 1))
+        img_input = np.expand_dims(img_input, axis=0)
 
-        res = results[0]
-        if res.boxes is None:
-            return detections
+        input_name = model.get_inputs()[0].name
+        outputs = model.run(None, {input_name: img_input})
 
-        for box in res.boxes:
-            cls_id = int(box.cls[0])
-            conf = float(box.conf[0])
-            label = model.names.get(cls_id, str(cls_id))
+        predictions = outputs[0][0].T
+        orig_h, orig_w = frame_bgr.shape[:2]
+        scale_x = orig_w / 640.0
+        scale_y = orig_h / 640.0
 
-            if label == "cell phone" and conf >= PHONE_CONF_THRESHOLD:
-                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                detections.append({
-                    "box": (x1, y1, x2, y2),
-                    "conf": conf,
-                    "label": label,
-                })
+        for pred in predictions:
+            cx, cy, w, h = pred[0], pred[1], pred[2], pred[3]
+            class_scores = pred[4:]
+            class_id = int(np.argmax(class_scores))
+            conf = float(class_scores[class_id])
+            if class_id != PHONE_CLASS_ID or conf < PHONE_CONF_THRESHOLD:
+                continue
+            x1 = max(0, int((cx - w / 2) * scale_x))
+            y1 = max(0, int((cy - h / 2) * scale_y))
+            x2 = min(orig_w - 1, int((cx + w / 2) * scale_x))
+            y2 = min(orig_h - 1, int((cy + h / 2) * scale_y))
+            detections.append({
+                "box": (x1, y1, x2, y2),
+                "conf": conf,
+                "label": "cell phone",
+            })
     except Exception as e:
         print(f"[WARN] Loi detect phone: {e}")
-
     return detections
 
 
@@ -404,6 +408,9 @@ def main():
 
     frame_count = 0
     cached_phone_dets = []
+    fps_start = time.time()
+    fps_counter = 0
+    fps_display = 0.0
 
     with mp_face_mesh.FaceMesh(
         max_num_faces=1,
@@ -419,6 +426,12 @@ def main():
             frame = cv2.flip(frame, 1)
             frame_h, frame_w = frame.shape[:2]
             frame_count += 1
+            fps_counter += 1
+            elapsed_fps = time.time() - fps_start
+            if elapsed_fps >= 1.0:
+                fps_display = fps_counter / elapsed_fps
+                fps_counter = 0
+                fps_start = time.time()
 
             if USE_PHONE_DETECTION and phone_model is not None:
                 if frame_count % PHONE_DETECT_EVERY_N_FRAMES == 0:
@@ -642,6 +655,7 @@ def main():
                 status_color = (0, 165, 255)
 
             put_status_text(frame, status, status_color)
+            cv2.putText(frame, f"FPS: {fps_display:.1f}", (frame_w - 160, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
 
             for i, msg in enumerate(alert_messages[:4]):
                 if msg.startswith("BUON NGU"):

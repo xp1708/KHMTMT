@@ -220,6 +220,7 @@ python3 -c "import numpy as np; print('numpy:', np.__version__)"
 ---
 
 ## 5. PATCH main.py ĐỂ DÙNG ONNX
+(CÓ THỂ BỎ QUA NẾU CHƯA TẠO FILE .ommx)
 
 Thay thế `ultralytics/YOLO` bằng `onnxruntime` trong `main.py`. Chạy 2 lệnh sau:
 

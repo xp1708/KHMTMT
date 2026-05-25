@@ -12,6 +12,21 @@ CAMERA_INDEX = 0
 USE_PHONE_DETECTION = True
 
 # =========================
+# HIEN DIEN TRONG KHUNG HINH
+# =========================
+# TC-002: Chi xuat hien mot phan/nam sat mep khung hinh.
+# Vi code dang dung FaceMesh, he thong se danh gia theo khuon mat:
+# neu face box nam sat bien trai/phai/tren/duoi thi coi la chi xuat hien mot phan.
+PARTIAL_FACE_MARGIN_PX = 25
+PARTIAL_FACE_SECONDS = 1.0
+
+# TC-003: Cui xuong nhat do.
+# Phan biet voi ngu gat bang cach uu tien truong hop mat van mo
+# nhung dau cui manh trong mot khoang thoi gian ngan.
+PICK_OBJECT_SECONDS = 1.0
+PICK_HEAD_DROP_THRESHOLD = 28.0
+
+# =========================
 # NGUONG MAT / MIENG
 # =========================
 EAR_THRESHOLD = 0.20            # Eye Aspect Ratio - duoi nguong nay coi la mat nham
@@ -234,6 +249,28 @@ def center_in_box(point, box):
     x, y = point
     x1, y1, x2, y2 = box
     return x1 <= x <= x2 and y1 <= y <= y2
+
+
+def is_partial_face(face_box, frame_w, frame_h, margin_px=25):
+    """
+    TC-002: Kiem tra nguoi dung chi xuat hien mot phan trong khung hinh.
+
+    Do he thong hien tai dung MediaPipe FaceMesh thay vi Pose toan than,
+    ta suy luan dua tren face box:
+      - Mat nam sat bien trai/phai/tren/duoi khung hinh
+      - Khuon mat co nguy co bi cat mot phan
+    """
+    if face_box is None:
+        return False
+
+    x1, y1, x2, y2 = face_box
+
+    near_left = x1 <= margin_px
+    near_top = y1 <= margin_px
+    near_right = x2 >= frame_w - margin_px
+    near_bottom = y2 >= frame_h - margin_px
+
+    return near_left or near_top or near_right or near_bottom
 
 
 def estimate_head_pose(face_points, frame_width, frame_height, prev_rvec=None, prev_tvec=None):
@@ -473,6 +510,8 @@ def main():
     phone_since = None
     low_light_since = None
     last_alert_time = 0.0
+    partial_face_since = None
+    pick_object_since = None
 
     # Cache cho lighting check (tai su dung khi skip frame de tiet kiem CPU)
     is_low_light = False
@@ -604,6 +643,23 @@ def main():
                 face_size = min(box_w, box_h)
                 current_face_box = (int(x_min), int(y_min), int(x_max), int(y_max))
 
+                # ===== TC-002: CHI XUAT HIEN MOT PHAN TRONG KHUNG HINH =====
+                partial_face_now = is_partial_face(
+                    current_face_box,
+                    frame_w,
+                    frame_h,
+                    PARTIAL_FACE_MARGIN_PX
+                )
+
+                if partial_face_now:
+                    if partial_face_since is None:
+                        partial_face_since = now
+                else:
+                    partial_face_since = None
+
+                if partial_face_since is not None and (now - partial_face_since) >= PARTIAL_FACE_SECONDS:
+                    alert_messages.append("HIEN DIEN: chi xuat hien mot phan trong khung hinh")
+
                 pose_valid = False
                 pose = None
 
@@ -683,6 +739,23 @@ def main():
                     distracted_state = distracted_now
                     head_drop_state = head_drop_now
 
+                    # ===== TC-003: CUI XUONG NHAT DO =====
+                    # Neu dau cui manh nhung mat van mo thi coi la hanh vi cui xuong/nhat do,
+                    # khac voi ngu gat thuong di kem nham mat lau.
+                    pick_object_now = (
+                        (HEAD_DROP_SIGN * pitch_rel) > PICK_HEAD_DROP_THRESHOLD
+                        and ear >= EAR_THRESHOLD
+                    )
+
+                    if pick_object_now:
+                        if pick_object_since is None:
+                            pick_object_since = now
+                    else:
+                        pick_object_since = None
+
+                    if pick_object_since is not None and (now - pick_object_since) >= PICK_OBJECT_SECONDS:
+                        alert_messages.append("HIEN DIEN: cui xuong nhat do")
+
                 distracted_since = now if distracted_now and distracted_since is None else (distracted_since if distracted_now else None)
 
                 # ===== KIEM TRA NGUONG THOI GIAN -> THEM CANH BAO =====
@@ -706,12 +779,13 @@ def main():
                 cv2.putText(frame, f"Pitch(rel): {pitch_rel:.1f}", (20, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                 cv2.putText(frame, f"Yaw(rel): {yaw_rel:.1f}", (20, 210), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                 cv2.putText(frame, f"Roll(rel): {roll_rel:.1f}", (20, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                cv2.putText(frame, f"Partial: {partial_face_now}", (20, 270), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
                 if base_pitch is None:
                     cv2.putText(
                         frame,
                         "Dang hieu chinh pose: nhin thang vao camera",
-                        (20, 280),
+                        (20, 300),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.7,
                         (0, 255, 255),
@@ -737,6 +811,8 @@ def main():
                 eye_closed_since = None
                 yawn_since = None
                 distracted_since = None
+                partial_face_since = None
+                pick_object_since = None
                 prev_rvec = None
                 prev_tvec = None
                 smooth_pitch = None
@@ -795,6 +871,7 @@ def main():
             has_drowsy = any(msg.startswith("BUON NGU") for msg in alert_messages)
             has_phone = any("dien thoai" in msg for msg in alert_messages)
             has_distracted = any(msg.startswith("MAT TAP TRUNG") for msg in alert_messages)
+            has_presence = any(msg.startswith("HIEN DIEN") for msg in alert_messages)
 
             if has_phone:
                 status = "Dang dung dien thoai"
@@ -802,6 +879,9 @@ def main():
             elif has_drowsy and has_distracted:
                 status = "Buon ngu + Mat tap trung"
                 status_color = (0, 0, 255)
+            elif has_presence:
+                status = "Hien dien khong hop le"
+                status_color = (0, 165, 255)
             elif has_drowsy:
                 status = "Buon ngu"
                 status_color = (0, 0, 255)
@@ -830,6 +910,8 @@ def main():
                     color = (0, 0, 255)
                 elif "dien thoai" in msg:
                     color = (255, 0, 255)
+                elif msg.startswith("HIEN DIEN"):
+                    color = (0, 165, 255)
                 else:
                     color = (0, 165, 255)
 

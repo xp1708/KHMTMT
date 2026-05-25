@@ -37,6 +37,14 @@ DISTRACT_SECONDS = 4.5          # Thoi gian nhin lech lien tuc de canh bao
 NO_FACE_SECONDS = 2.0           # Thoi gian khong thay mat de canh bao
 ALERT_COOLDOWN_SECONDS = 2.0    # Khoang nghi giua 2 lan phat am thanh canh bao
 
+# Tien bo sung
+# --- NGUONG CHO HANH VI BAT THUONG ---
+TILT_THRESHOLD = 25.0           # Goc nghieng dau (Roll)
+SHAKE_THRESHOLD = 15.0          # Bien do lac dau (Yaw)
+SHAKE_COUNT_LIMIT = 3           # So lan lac toi da
+MOVE_SPEED_THRESHOLD = 0.15     # Toc do di chuyen (chuan hoa)
+
+
 # =========================
 # TOI UU HEAD POSE
 # =========================
@@ -507,6 +515,16 @@ def main():
     yawn_since = None
     distracted_since = None
     no_face_since = None
+
+    # Tien bo sung
+    tilt_since = None
+    tilt_state = False
+    yaw_history = []
+    prev_face_center = None
+    move_since = None
+    last_frame_time = time.time()
+ 
+    
     phone_since = None
     low_light_since = None
     last_alert_time = 0.0
@@ -739,6 +757,60 @@ def main():
                     distracted_state = distracted_now
                     head_drop_state = head_drop_now
 
+                    # Tien bo sung
+                    # 1. KIEM TRA NGHIENG DAU (Roll)
+                    if abs(smooth_roll) > TILT_THRESHOLD:
+                        if tilt_since is None: tilt_since = now
+                        elif (now - tilt_since) > 1.5:
+                            alert_messages.append("CANH BAO: Nghieng dau bat thuong")
+                    else:
+                        tilt_since = None
+
+                    # 2. KIEM TRA LAC DAU (Yaw)
+                    yaw_history.append((now, smooth_yaw))
+                    # Xoa cac du lieu cu hon 2 giay
+                    yaw_history = [h for h in yaw_history if now - h[0] < 2.0] 
+                    if len(yaw_history) > 5:
+                        shakes = 0
+                        yaws = [h[1] for h in yaw_history]
+                        last_peak = yaws[0]
+                        last_dir = 0
+                        for val in yaws[1:]:
+                            if abs(val - last_peak) > SHAKE_THRESHOLD:
+                                current_dir = 1 if val > last_peak else -1
+                                if last_dir != 0 and current_dir != last_dir:
+                                    shakes += 1
+                                last_dir = current_dir
+                                last_peak = val
+                        if shakes >= SHAKE_COUNT_LIMIT:
+                            alert_messages.append("CANH BAO: Lac dau lien tuc")
+                            yaw_history = [] # Reset sau khi canh bao
+
+                    # 3. KIEM TRA DI CHUYEN QUA NHIEU
+                    # Tinh tam khuon mat (x, y)
+                    fx_center = (x_min + x_max) / 2.0 / frame_w
+                    fy_center = (y_min + y_max) / 2.0 / frame_h
+                    curr_center = (fx_center, fy_center)
+                    
+                    is_moving = False
+                    if prev_face_center is not None:
+                        dt = now - last_frame_time
+                        if dt > 0:
+                            dist = math.sqrt((curr_center[0]-prev_face_center[0])**2 + (curr_center[1]-prev_face_center[1])**2)
+                            speed = dist / dt
+                            if speed > MOVE_SPEED_THRESHOLD:
+                                is_moving = True
+                    
+                    prev_face_center = curr_center
+                    last_frame_time = now
+                    
+                    if is_moving:
+                        if move_since is None: move_since = now
+                        elif (now - move_since) > 2.0:
+                            alert_messages.append("CANH BAO: Di chuyen qua nhieu")
+                    else:
+                        move_since = None
+                    
                     # ===== TC-003: CUI XUONG NHAT DO =====
                     # Neu dau cui manh nhung mat van mo thi coi la hanh vi cui xuong/nhat do,
                     # khac voi ngu gat thuong di kem nham mat lau.

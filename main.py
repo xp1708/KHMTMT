@@ -59,6 +59,9 @@ PHONE_NEAR_FACE_EXPAND_PX = 180         # Mo rong vung mat de bat dien thoai gan
 LOW_LIGHT_BRIGHTNESS_THRESHOLD = 60     # Nguong mean grayscale (0-255)
 LOW_LIGHT_NOISE_THRESHOLD = 15          # Nguong std grayscale khi camera boost gain
 LOW_LIGHT_SECONDS = 1.5                 # Thoi gian anh sang yeu lien tuc de canh bao
+LIGHT_CHECK_EVERY_N_FRAMES = 10         # Chay check_lighting moi N frame de tiet kiem CPU
+
+CAMERA_RETRY_LIMIT = 5   # ~1 giây nếu FPS = 5
 
 # =========================
 # MEDIAPIPE LANDMARK
@@ -447,6 +450,21 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
+    # ===== STARTUP LIGHT CHECK =====
+    # Doc 1 frame de canh bao som neu moi truong qua toi, tranh user
+    # phai cho 1.5s moi biet anh sang khong du de giam sat.
+    ok_startup, startup_frame = cap.read()
+    if ok_startup:
+        is_low_startup, mean_startup, std_startup = check_lighting(
+            startup_frame, LOW_LIGHT_BRIGHTNESS_THRESHOLD, LOW_LIGHT_NOISE_THRESHOLD
+        )
+        if is_low_startup:
+            print(
+                f"[CANH BAO] Anh sang yeu khi khoi dong "
+                f"(mean={mean_startup:.0f}, std={std_startup:.0f}). "
+                f"Nen cai thien anh sang truoc khi giam sat."
+            )
+
     # ===== TIMER STATE =====
     eye_closed_since = None
     yawn_since = None
@@ -455,6 +473,11 @@ def main():
     phone_since = None
     low_light_since = None
     last_alert_time = 0.0
+
+    # Cache cho lighting check (tai su dung khi skip frame de tiet kiem CPU)
+    is_low_light = False
+    light_mean = 0.0
+    light_std = 0.0
 
     # ===== HEAD POSE STATE =====
     prev_rvec = None
@@ -473,6 +496,9 @@ def main():
     # ===== HYSTERESIS STATE =====
     distracted_state = False
     head_drop_state = False
+    
+    # =====  CAMERA FAILURE STATE =====
+    camera_fail_count = 0
 
     # ===== FRAME / FPS =====
     frame_count = 0
@@ -489,20 +515,36 @@ def main():
     ) as face_mesh:
         while True:
             ok, frame = cap.read()
-            if not ok:
-                break
+            if not ok or frame is None:
+                camera_fail_count += 1
+                print(f"[WARN] Khong doc duoc frame ({camera_fail_count}/{CAMERA_RETRY_LIMIT})")
+                if camera_fail_count >= CAMERA_RETRY_LIMIT:
+                    print("[ERROR] Mat ket noi camera. Dang thu ket noi lai...")
+                    cap.release()
+                    time.sleep(2.0)
+                    cap = cv2.VideoCapture(CAMERA_INDEX)
+                    camera_fail_count = 0
+                    if not cap.isOpened():
+                        print("[ERROR] Khong the ket noi lai camera. Thoat.")
+                        break
+                continue
+
+            camera_fail_count = 0  # Reset khi doc frame thanh cong
 
             frame = cv2.flip(frame, 1)
             frame_h, frame_w = frame.shape[:2]
             now = time.time()  # FIX: Gan timestamp som de cac block phia sau dung duoc
 
-            # ===== KIEM TRA ANH SANG =====
-            # Tinh ngay sau khi co frame de quyet dinh co tin tuong cac detection sau khong
-            is_low_light, light_mean, light_std = check_lighting(
-                frame,
-                LOW_LIGHT_BRIGHTNESS_THRESHOLD,
-                LOW_LIGHT_NOISE_THRESHOLD
-            )
+            # ===== KIEM TRA ANH SANG (dinh ky moi N frame de tiet kiem CPU) =====
+            # Anh sang thuc te it khi thay doi dot ngot, nen khong can check moi frame.
+            # frame_count=0 o lan dau -> 0 % N == 0 -> luon check o iteration dau tien.
+            # Khi mat khuon mat se force re-check ngay lap tuc o block "else" ben duoi.
+            if frame_count % LIGHT_CHECK_EVERY_N_FRAMES == 0:
+                is_low_light, light_mean, light_std = check_lighting(
+                    frame,
+                    LOW_LIGHT_BRIGHTNESS_THRESHOLD,
+                    LOW_LIGHT_NOISE_THRESHOLD
+                )
             if is_low_light:
                 if low_light_since is None:
                     low_light_since = now
@@ -677,6 +719,21 @@ def main():
                     )
             else:
                 # ===== KHONG THAY MAT - RESET STATE =====
+                # FORCE RE-CHECK ANH SANG: mat khuon mat co the do anh sang yeu,
+                # neu frame nay chua check thi check ngay de chan doan dung nguyen nhan
+                # va tranh false positive "khong phat hien khuon mat".
+                if frame_count % LIGHT_CHECK_EVERY_N_FRAMES != 0:
+                    is_low_light, light_mean, light_std = check_lighting(
+                        frame,
+                        LOW_LIGHT_BRIGHTNESS_THRESHOLD,
+                        LOW_LIGHT_NOISE_THRESHOLD
+                    )
+                    if is_low_light:
+                        if low_light_since is None:
+                            low_light_since = now
+                    else:
+                        low_light_since = None
+
                 eye_closed_since = None
                 yawn_since = None
                 distracted_since = None

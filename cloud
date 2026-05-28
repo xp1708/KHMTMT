@@ -1,3 +1,15 @@
+phat@phat:~ $ cd ~/Documents/ce_comedians/project
+source venv/bin/activate
+(venv) phat@phat:~/Documents/ce_comedians/project $ pip3 install blynklib
+Looking in indexes: https://pypi.org/simple, https://www.piwheels.org/simple
+Collecting blynklib
+  Downloading https://www.piwheels.org/simple/blynklib/blynklib-0.2.6-py3-none-any.whl.metadata (14 kB)
+Downloading https://www.piwheels.org/simple/blynklib/blynklib-0.2.6-py3-none-any.whl (15 kB)
+Installing collected packages: blynklib
+Successfully installed blynklib-0.2.6
+
+[notice] A new release of pip is available: 24.0 -> 26.1.1
+[notice] To update, run: pip install --upgrade pip
 (venv) phat@phat:~/Documents/ce_comedians/project $ cd ~/Documents/ce_comedians/project
 source venv/bin/activate
 (venv) phat@phat:~/Documents/ce_comedians/project $ python3 main.py
@@ -17,3 +29,20 @@ qt.qpa.plugin: Could not find the Qt platform plugin "wayland" in "/home/phat/Do
 W0000 00:00:1779941715.454131    6699 landmark_projection_calculator.cc:186] Using NORM_RECT without IMAGE_DIMENSIONS is only supported for the square ROI. Provide IMAGE_DIMENSIONS or use PROJECTION_MATRIX.
 ^C
 [OS SIGNAL] Nhận được tín hiệu ngắt 2. Đang chuyển trạng thái sang SAVING_DATA...
+
+[INFO] Giải phóng tài nguyên Camera và cửa sổ UI...
+
+============================================================
+[BLYNK] BẮT ĐẦU TIEN TRÌNH ĐỒNG BỘ CLOUD...
+  - Pin V1 (Buon ngu): 0
+  - Pin V2 (Nhin lech): 0
+  - Pin V3 (Khong co mat): 4
+  - Pin V4 (Su dung DT): 0
+  - Pin V5 (Hanh vi khac): 3
+============================================================
+[ERROR] Thiếu thư viện 'blynk-library-python'. Hãy cài đặt bằng lệnh: pip install blynk-library-python
+[INFO] Chương trình đã kết thúc hoàn toàn.
+(venv) phat@phat:~/Documents/ce_comedians/project $ ^C
+(venv) phat@phat:~/Documents/ce_comedians/project $ ^C
+(venv) phat@phat:~/Documents/ce_comedians/project $ ^C
+(venv) phat@phat:~/Documents/ce_comedians/project $ 

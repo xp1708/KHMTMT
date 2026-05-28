@@ -10,7 +10,7 @@ import sys
 # ==============================================================================
 # 1. CẤU HÌNH BLYNK
 # ==============================================================================
-BLYNK_AUTH_TOKEN = "YOUR_BLYNK_AUTH_TOKEN"  # Thay Token Blynk thực tế của bạn tại đây
+BLYNK_AUTH_TOKEN = "0cS7u48kkbPHi_iecesgzfkIrjOFAUf5"  # Thay Token Blynk thực tế của bạn tại đây
 
 # ==============================================================================
 # 2. TUY CHỌN CHUNG & NGƯỠNG HÀNH VI
@@ -76,11 +76,11 @@ HEAD_POSE_LANDMARKS = {"nose_tip": 1, "chin": 152, "left_eye_outer": 33, "right_
 # 3. BIẾN TOÀN CỤC & TRẠNG THÁI HỆ THỐNG
 # ==============================================================================
 # Bộ đếm hành vi
-count1 = 0  # V1: Buồn ngủ
-count2 = 0  # V2: Nhìn lệch
-count3 = 0  # V3: Vắng mặt
-count4 = 0  # V4: Sử dụng điện thoại
-count5 = 0  # V5: Hành vi bất thường
+count1 = 0  # V0: Buồn ngủ
+count2 = 0  # V1: Nhìn lệch
+count3 = 0  # V2: Vắng mặt
+count4 = 0  # V3: Sử dụng điện thoại
+count5 = 0  # V4: Hành vi bất thường
 
 system_state = "RUNNING"
 cap = None
@@ -419,20 +419,60 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Khởi tạo Blynk ngay khi chạy
-    last_blynk_status = ""
-    last_blynk_send_time = time.time()
-    
-    if BLYNK_AUTH_TOKEN != "YOUR_BLYNK_AUTH_TOKEN" and BLYNK_AUTH_TOKEN != "":
-        try:
-            import BlynkLib
-            blynk = BlynkLib.Blynk(BLYNK_AUTH_TOKEN)
+    # ==============================================================================
+# KHOI TAO BLYNK
+# ==============================================================================
+last_blynk_status = ""
+last_blynk_send_time = time.time()
+
+if BLYNK_AUTH_TOKEN not in ["", "YOUR_BLYNK_AUTH_TOKEN"]:
+    try:
+        import BlynkLib
+
+        print("[BLYNK] Dang khoi tao ket noi...")
+
+        # SSL=True => dùng port 443 thay vì 80
+        blynk = BlynkLib.Blynk(
+            BLYNK_AUTH_TOKEN,
+            server="blynk.cloud",
+            port=443,
+            ssl=True
+        )
+
+        # thử chạy vài vòng để bắt handshake
+        connected = False
+
+        for _ in range(30):
+            try:
+                blynk.run()
+                time.sleep(0.1)
+
+                if blynk.connected():
+                    connected = True
+                    break
+
+            except Exception:
+                pass
+
+        if connected:
             blynk_enabled = True
-            print("[BLYNK] Ready! Thiết bị đã kết nối trực tuyến (🟢 ONLINE).")
-        except ImportError:
-            print("[ERROR] Thiếu thư viện 'blynk-library-python'.")
-        except Exception as e:
-            print(f"[ERROR] Lỗi kết nối Blynk: {e}")
+            print("[BLYNK] Ket noi thanh cong (ONLINE)")
+        else:
+            blynk_enabled = False
+            blynk = None
+            print("[ERROR] Khong ket noi duoc toi Blynk Cloud")
+
+    except ImportError:
+        print("[ERROR] Chua cai BlynkLib")
+        print("Hay chay:")
+        print("pip install blynk-library-python")
+
+    except Exception as e:
+        print(f"[ERROR] Loi Blynk: {e}")
+        blynk_enabled = False
+        blynk = None
+else:
+    print("[WARN] Chua cau hinh BLYNK_AUTH_TOKEN")
 
     mp_face_mesh = mp.solutions.face_mesh
     phone_model, _ = load_phone_model()
@@ -821,10 +861,10 @@ def main():
                 except Exception as e:
                     print(f"[BLYNK] Loi gui status V0: {e}")
 
-            # ===== PERIODIC BLYNK SEND (V1-V5 Gửi định kỳ 1 phút) =====
-            if blynk_enabled and blynk is not None and (now - last_blynk_send_time) >= 60.0:
+            # ===== PERIODIC BLYNK SEND (V1-V5 Gửi định kỳ 5 giây) =====
+            if blynk_enabled and blynk is not None and (now - last_blynk_send_time) >= 5.0:
                 try:
-                    print("[BLYNK] Dang gui du lieu dinh ky 1 phut (V1-V5)...")
+                    print("[BLYNK] Dang gui du lieu dinh ky 1 phut (V0-V4)...")
                     blynk.virtual_write(1, count1)
                     blynk.virtual_write(2, count2)
                     blynk.virtual_write(3, count3)
@@ -888,5 +928,8 @@ if __name__ == "__main__":
         cv2.destroyAllWindows()
         
         # Gửi dữ liệu cuối cùng qua Blynk
-        send_data_to_blynk(blynk, blynk_enabled, status)
+        if blynk_enabled and blynk is not None:
+    send_data_to_blynk(blynk, blynk_enabled, status)
+else:
+    print("[BLYNK] Khong gui vi chua ket noi")
         print("[INFO] Da thoat he thong hoan toan.")

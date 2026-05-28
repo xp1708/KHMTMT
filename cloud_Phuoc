@@ -21,8 +21,8 @@ import sys
 # 1. CẤU HÌNH BLYNK
 # ==============================================================================
 # ✅ FIX 4: Thêm BLYNK_TEMPLATE_ID và BLYNK_TEMPLATE_NAME (bắt buộc với Blynk IoT 2.0)
-os.environ["BLYNK_TEMPLATE_ID"]   = "TMPLxxxxxxxx"   # ← Thay bằng Template ID thực của bạn
-os.environ["BLYNK_TEMPLATE_NAME"] = "DriverMonitor"  # ← Thay bằng tên Template của bạn
+os.environ["BLYNK_TEMPLATE_ID"]   = "TMPL6j2ujsf2j"
+os.environ["BLYNK_TEMPLATE_NAME"] = "AI Attention"
 
 BLYNK_AUTH_TOKEN = "0cS7u48kkbPHi_iecesgzfkIrjOFAUf5"  # Token Blynk của bạn
 
@@ -463,15 +463,31 @@ def main():
 
             print("[BLYNK] Dang khoi tao ket noi...")
 
-            blynk = BlynkLib.Blynk(
-                BLYNK_AUTH_TOKEN,
-                server="blynk.cloud",
-                port=443,
-                ssl=True
-            )
+            # BlynkLib v0.2.0 - KHÔNG hỗ trợ ssl=, chỉ dùng server + port
+            # Region SGP1 (Singapore) → server sgp1.blynk.cloud
+            blynk = None
+            servers_to_try = [
+                ("sgp1.blynk.cloud", 80),
+                ("sgp1.blynk.cloud", 8080),
+                ("blynk.cloud", 80),
+                ("blynk.cloud", 8080),
+            ]
+
+            for i, (srv, prt) in enumerate(servers_to_try):
+                try:
+                    print(f"[BLYNK] Thu ket noi {i+1}/{len(servers_to_try)}: {srv}:{prt}...")
+                    blynk = BlynkLib.Blynk(BLYNK_AUTH_TOKEN, server=srv, port=prt)
+                    print(f"[BLYNK] Khoi tao OK voi {srv}:{prt}")
+                    break
+                except Exception as e:
+                    print(f"[BLYNK] {srv}:{prt} loi: {e}")
+                    blynk = None
+
+            if blynk is None:
+                raise RuntimeError("Khong the khoi tao BlynkLib")
 
             connected = False
-            for _ in range(30):
+            for _ in range(50):
                 try:
                     blynk.run()
                     time.sleep(0.1)
@@ -488,6 +504,10 @@ def main():
                 blynk_enabled = False
                 blynk = None
                 print("[ERROR] Khong ket noi duoc toi Blynk Cloud")
+                print("[HINT] Kiem tra lai:")
+                print("  1. BLYNK_TEMPLATE_ID va BLYNK_TEMPLATE_NAME co dung khong?")
+                print("  2. Auth Token co chinh xac khong?")
+                print("  3. Raspberry Pi co ket noi internet khong? (ping blynk.cloud)")
 
         except ImportError:
             print("[ERROR] Chua cai BlynkLib. Hay chay: pip install blynk-library-python")

@@ -10,7 +10,8 @@ import sys
 # ==============================================================================
 # 1. CẤU HÌNH BLYNK & THIẾT BỊ
 # ==============================================================================
-BLYNK_AUTH_TOKEN = "YOUR_BLYNK_AUTH_TOKEN"  # Thay đổi Token Blynk thực tế của bạn tại đây
+BLYNK_AUTH_TOKEN = "0cS7u48kkbPHi_iecesgzfkIrjOFAUf5
+"  # Thay đổi Token Blynk thực tế của bạn tại đây
 CAMERA_INDEX = 0                            # Index của camera (mặc định là 0)
 USE_PHONE_DETECTION = True                  # Bật/Tắt tính năng nhận diện điện thoại bằng YOLO
 

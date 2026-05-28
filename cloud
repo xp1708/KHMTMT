@@ -1,13 +1,17 @@
+_  __          __
+   / _ )/ /_ _____  / /__
+  / _  / / // / _ \/  '_/
+ /____/_/\_, /_//_/_/\_\
+        /___/ for Python v0.2.0 (Linux)
+
+[BLYNK] Dang khoi tao ket noi...
 [ERROR] Loi Blynk: BlynkProtocol.__init__() got an unexpected keyword argument 'ssl'
-2026-05-28 13:53:47.237998169 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card1": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"
-2026-05-28 13:53:47.238115870 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card0": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card0/device/vendor"
+2026-05-28 14:12:50.572343428 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card1": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"
+2026-05-28 14:12:50.572498850 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card0": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card0/device/vendor"
 Error in cpuinfo: prctl(PR_SVE_GET_VL) failed
 INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
 WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
-W0000 00:00:1779951228.116724    4081 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
-W0000 00:00:1779951228.166555    4079 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
-[INFO] Nguoi dung an 'Q' de thoat. Dang dung camera...
+W0000 00:00:1779952371.317024    4593 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1779952371.370822    4593 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
 
-[INFO] Giai phong camera va cua so hien thi...
-[BLYNK] Khong gui vi chua ket noi
-[INFO] Da thoat he thong hoan toan.
+

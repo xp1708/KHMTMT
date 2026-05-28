@@ -1,3 +1,13 @@
+import os
+
+# ==============================================================================
+# 0. SUPPRESS WARNINGS (đặt trước tất cả import khác)
+# ==============================================================================
+os.environ["QT_QPA_PLATFORM"]       = "xcb"   # Fix: Qt Wayland plugin not found
+os.environ["GLOG_minloglevel"]       = "3"     # Tắt log MediaPipe
+os.environ["TF_CPP_MIN_LOG_LEVEL"]  = "3"     # Tắt log TensorFlow
+os.environ["ONNXRUNTIME_DISABLE_GPU"] = "1"   # Dùng CPU rõ ràng, tránh GPU warning
+
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -6,7 +16,6 @@ import math
 import platform
 import signal
 import sys
-import os
 
 # ==============================================================================
 # 1. CẤU HÌNH BLYNK

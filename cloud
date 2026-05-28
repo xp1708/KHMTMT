@@ -463,11 +463,11 @@ def main():
     global system_state, cap, blynk, blynk_enabled, status
     global count1, count2, count3, count4, count5
 
-    # Đăng ký Signal OS
+    # Đăng ký Signal OS để dọn dẹp hệ thống khi tắt
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Kiểm tra Internet trước khi kết nối Blynk
+    # Kiểm tra Internet trước khi khởi tạo Blynk
     if not check_internet():
         print("[ERROR] Raspberry Pi khong co internet")
         return
@@ -483,15 +483,17 @@ def main():
             BLYNK_SERVER = "blynk.cloud"
 
             try:
+                # Thử kết nối SSL (Cổng 443) trước
+                print("[BLYNK] Dang thu ket noi bao mat (SSL Cong 443)...")
                 blynk = blynklib.Blynk(
                     BLYNK_AUTH_TOKEN,
                     server=BLYNK_SERVER,
-                    port=80
+                    port=443
                 )
-                print("[BLYNK] Da tao client")
+                print("[BLYNK] Da tao client (SSL)")
 
-                # test kết nối trong 10 giây
-                timeout = time.time() + 10
+                # Test kết nối SSL trong 5 giây
+                timeout = time.time() + 5
                 connected = False
 
                 while time.time() < timeout:
@@ -504,11 +506,33 @@ def main():
                     except:
                         pass
 
+                # Nếu SSL thất bại, chuyển sang chế độ không bảo mật (Cổng 80)
+                if not connected:
+                    print("[BLYNK] SSL Timeout. Dang thu ket noi khong bao mat (TCP Cong 80)...")
+                    blynk = blynklib.Blynk(
+                        BLYNK_AUTH_TOKEN,
+                        server=BLYNK_SERVER,
+                        port=80,
+                        insecure=True
+                    )
+                    print("[BLYNK] Da tao client (Insecure)")
+                    
+                    timeout = time.time() + 5
+                    while time.time() < timeout:
+                        blynk.run()
+                        time.sleep(0.1)
+                        try:
+                            if blynk.connected():
+                                connected = True
+                                break
+                        except:
+                            pass
+
                 if connected:
-                    print("[BLYNK] Ket noi thanh cong")
+                    print("[BLYNK] Ket noi thanh cong!")
                     blynk_enabled = True
                 else:
-                    print("[BLYNK] Timeout ket noi")
+                    print("[BLYNK] Timeout ket noi (ca SSL va Insecure)")
                     blynk_enabled = False
                     blynk = None
 
@@ -532,7 +556,7 @@ def main():
     mp_face_mesh = mp.solutions.face_mesh
     phone_model, _ = load_phone_model()
 
-    # Sử dụng CAP_V4L2 tối ưu cho Raspberry Pi
+    # Sử dụng CAP_V4L2 tối ưu cho driver camera trên Raspberry Pi
     cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_V4L2)
     if not cap.isOpened():
         raise RuntimeError("Khong mo duoc webcam. Kiem tra CAMERA_INDEX hoac quyen camera.")
@@ -540,6 +564,7 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
+    # Đọc thử frame đầu để cảnh báo nếu phòng tối
     ok_startup, startup_frame = cap.read()
     if ok_startup:
         is_low_startup, mean_startup, std_startup = check_lighting(
@@ -548,7 +573,7 @@ def main():
         if is_low_startup:
             print(f"[CANH BAO] Anh sang yeu. mean={mean_startup:.0f}, std={std_startup:.0f}")
 
-    # ===== BIẾN THỜI GIAN =====
+    # ===== BIẾN THỜI GIAN THEO DÕI TRẠNG THÁI =====
     eye_closed_since = None
     yawn_since = None
     distracted_since = None
@@ -567,7 +592,7 @@ def main():
     light_mean = 0.0
     light_std = 0.0
 
-    # ===== HEAD POSE STATE =====
+    # ===== HEAD POSE STATE (TƯ THẾ ĐẦU) =====
     prev_rvec = None
     prev_tvec = None
     smooth_pitch = None
@@ -579,19 +604,19 @@ def main():
     calibration_start = None
     calibration_samples = []
 
-    # ===== HYSTERESIS STATE =====
+    # ===== HYSTERESIS STATE (TRÁNH DAO ĐỘNG CẬP RẬP) =====
     distracted_state = False
     head_drop_state = False
     camera_fail_count = 0
 
-    # ===== FRAME / FPS =====
+    # ===== BIẾN FPS =====
     frame_count = 0
     cached_phone_dets = []
     fps_start = time.time()
     fps_counter = 0
     fps_display = 0.0
 
-    # ===== BIẾN TRẠNG THÁI ALERTS =====
+    # ===== TRẠNG THÁI CẢNH BÁO ĐỂ CHỐNG TỰ TĂNG BỘ ĐẾM =====
     state_eye_closed_alert = False
     state_yawn_alert = False
     state_head_drop_drowsy_alert = False
@@ -609,7 +634,7 @@ def main():
     ) as face_mesh:
 
         while system_state == "RUNNING":
-            # Chạy Blynk giữ trạng thái ONLINE và tự động Reconnect
+            # Duy trì kết nối Blynk và tự động Reconnect trong luồng chính
             if blynk_enabled and blynk is not None:
                 try:
                     blynk.run()
@@ -641,7 +666,7 @@ def main():
             frame_h, frame_w = frame.shape[:2]
             now = time.time()
 
-            # Kiểm tra ánh sáng
+            # Định kỳ kiểm tra ánh sáng để giảm tải CPU
             if frame_count % LIGHT_CHECK_EVERY_N_FRAMES == 0:
                 is_low_light, light_mean, light_std = check_lighting(
                     frame, LOW_LIGHT_BRIGHTNESS_THRESHOLD, LOW_LIGHT_NOISE_THRESHOLD
@@ -651,18 +676,18 @@ def main():
             elif not is_low_light:
                 low_light_since = None
 
-            # FPS
+            # Tính toán FPS hiển thị
             frame_count += 1
             fps_counter += 1
             if now - fps_start >= 1.0:
                 fps_display = fps_counter / (now - fps_start)
                 fps_counter, fps_start = 0, now
 
-            # YOLO phone
+            # YOLO Phát hiện điện thoại định kỳ
             if USE_PHONE_DETECTION and phone_model is not None and frame_count % PHONE_DETECT_EVERY_N_FRAMES == 0:
                 cached_phone_dets = detect_phone(phone_model, frame)
 
-            # FaceMesh
+            # Xử lý FaceMesh phát hiện khuôn mặt
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = face_mesh.process(rgb)
 
@@ -688,7 +713,7 @@ def main():
                 face_size = min(box_w, box_h)
                 current_face_box = (int(x_min), int(y_min), int(x_max), int(y_max))
 
-                # TC-002: Chỉ xuất hiện một phần
+                # TC-002: Chỉ xuất hiện một phần mặt ở rìa khung hình (Hành vi bất thường V5)
                 partial_face_now = is_partial_face(current_face_box, frame_w, frame_h, PARTIAL_FACE_MARGIN_PX)
                 if partial_face_now and partial_face_since is None:
                     partial_face_since = now
@@ -703,6 +728,7 @@ def main():
                 else:
                     state_partial_face_alert = False
 
+                # Ước lượng tư thế đầu (Head Pose)
                 pose_valid = False
                 if face_size >= MIN_FACE_BOX_SIZE:
                     pose = estimate_head_pose(face_points, frame_w, frame_h, prev_rvec, prev_tvec)
@@ -716,6 +742,7 @@ def main():
                         smooth_yaw = smooth_value(smooth_yaw, raw_yaw, HEAD_POSE_ALPHA)
                         smooth_roll = smooth_value(smooth_roll, raw_roll, HEAD_POSE_ALPHA)
 
+                        # Hiệu chỉnh tư thế đầu lúc bắt đầu (Calibration)
                         if base_pitch is None or base_yaw is None or base_roll is None:
                             if calibration_start is None:
                                 calibration_start = now
@@ -734,7 +761,7 @@ def main():
                     else:
                         prev_rvec, prev_tvec = None, None
 
-                # Landmarks
+                # Vẽ các điểm mốc chính lên khuôn mặt
                 key_ids = sorted(set(
                     LEFT_EYE_IDX + RIGHT_EYE_IDX +
                     [p for pair in MOUTH_TOP_BOTTOM for p in pair] +
@@ -764,7 +791,7 @@ def main():
                     distracted_state = distracted_now
                     head_drop_state = head_drop_now
 
-                    # Nghiêng đầu
+                    # Nghiêng đầu bất thường (Hành vi bất thường V5)
                     if abs(smooth_roll) > TILT_THRESHOLD:
                         if tilt_since is None:
                             tilt_since = now
@@ -777,7 +804,7 @@ def main():
                         tilt_since = None
                         state_tilt_alert = False
 
-                    # Lắc đầu
+                    # Lắc đầu liên tục (Hành vi bất thường V5)
                     yaw_history.append((now, smooth_yaw))
                     yaw_history = [h for h in yaw_history if now - h[0] < 2.0]
                     if len(yaw_history) > 5:
@@ -792,10 +819,11 @@ def main():
                                 last_dir, last_peak = current_dir, val
                         if shakes >= SHAKE_COUNT_LIMIT:
                             alert_messages.append("CANH BAO: Lac dau lien tuc")
-                            increment_counter(5, blynk, blynk_enabled)
+                            if not state_tilt_alert: # Sử dụng biến trạng thái chung cho nhóm hành vi 5
+                                increment_counter(5, blynk, blynk_enabled)
                             yaw_history = []
 
-                    # Di chuyển đầu
+                    # Di chuyển vị trí khuôn mặt quá nhiều (Hành vi bất thường V5)
                     fx_center = (x_min + x_max) / 2.0 / frame_w
                     fy_center = (y_min + y_max) / 2.0 / frame_h
                     curr_center = (fx_center, fy_center)
@@ -822,7 +850,7 @@ def main():
                         move_since = None
                         state_move_alert = False
 
-                    # TC-003: Cúi đầu nhặt đồ
+                    # TC-003: Cúi đầu nhặt đồ (Hành vi bất thường V5)
                     pick_object_now = (HEAD_DROP_SIGN * pitch_rel) > PICK_HEAD_DROP_THRESHOLD and ear >= EAR_THRESHOLD
                     if pick_object_now and pick_object_since is None:
                         pick_object_since = now
@@ -842,7 +870,7 @@ def main():
                 elif not distracted_now:
                     distracted_since = None
 
-                # Nhắm mắt quá lâu (Case 1)
+                # Nhắm mắt quá lâu (Buồn ngủ V1)
                 if eye_closed_since is not None and (now - eye_closed_since) >= EYE_CLOSED_SECONDS:
                     alert_messages.append("BUON NGU: nham mat qua lau")
                     if not state_eye_closed_alert:
@@ -851,7 +879,7 @@ def main():
                 else:
                     state_eye_closed_alert = False
 
-                # Ngáp (Case 1)
+                # Ngáp (Buồn ngủ V1)
                 if yawn_since is not None and (now - yawn_since) >= YAWN_SECONDS:
                     alert_messages.append("BUON NGU: phat hien ngap")
                     if not state_yawn_alert:
@@ -860,7 +888,7 @@ def main():
                 else:
                     state_yawn_alert = False
 
-                # Gục đầu nhắm mắt (Case 1)
+                # Gục đầu nhắm mắt (Buồn ngủ V1)
                 if head_drop_now and eye_closed_since is not None and (now - eye_closed_since) >= EYE_CLOSED_SECONDS:
                     alert_messages.append("BUON NGU: guc dau va nham mat")
                     if not state_head_drop_drowsy_alert:
@@ -869,7 +897,7 @@ def main():
                 else:
                     state_head_drop_drowsy_alert = False
 
-                # Nhìn lệch hướng (Case 2)
+                # Nhìn lệch hướng (Mất tập trung V2)
                 if distracted_since is not None and (now - distracted_since) >= DISTRACT_SECONDS:
                     alert_messages.append("MAT TAP TRUNG: nhin lech huong")
                     if not state_distracted_alert:
@@ -878,6 +906,7 @@ def main():
                 else:
                     state_distracted_alert = False
 
+                # Vẽ hộp giới hạn khuôn mặt
                 cv2.rectangle(frame, (int(x_min), int(y_min)), (int(x_max), int(y_max)), (120, 120, 120), 1)
                 cv2.putText(frame, f"EAR: {ear:.3f}", (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                 cv2.putText(frame, f"MAR: {mar:.3f}", (20, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
@@ -891,7 +920,7 @@ def main():
                                 (20, 300), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
             else:
-                # Không thấy mặt — reset tất cả
+                # Không thấy khuôn mặt trong khung hình — reset các biến trạng thái
                 eye_closed_since = None
                 yawn_since = None
                 distracted_since = None
@@ -916,7 +945,7 @@ def main():
                 if no_face_since is None:
                     no_face_since = now
 
-                # Không thấy mặt (Case 3)
+                # Vắng mặt (Vắng mặt V3)
                 if (now - no_face_since) >= NO_FACE_SECONDS:
                     status = "Mat tap trung (Khong thay khuon mat)"
                     status_color = (0, 165, 255)
@@ -927,7 +956,7 @@ def main():
                 else:
                     state_no_face_alert = False
 
-            # Sử dụng điện thoại
+            # Xử lý phát hiện điện thoại (Điện thoại V4)
             phone_in_use, phone_det_used = False, None
             if USE_PHONE_DETECTION and current_face_box is not None and len(cached_phone_dets) > 0:
                 phone_in_use, phone_det_used = is_phone_usage(cached_phone_dets, current_face_box, frame_w, frame_h)
@@ -937,7 +966,6 @@ def main():
             elif not phone_in_use:
                 phone_since = None
 
-            # Đang sử dụng điện thoại (Case 4)
             if phone_since is not None and (now - phone_since) >= PHONE_USE_SECONDS:
                 alert_messages.append("MAT TAP TRUNG: dang su dung dien thoai")
                 if not state_phone_alert:
@@ -946,7 +974,7 @@ def main():
             else:
                 state_phone_alert = False
 
-            # Vẽ box điện thoại
+            # Vẽ bounding box của điện thoại phát hiện được
             for det in cached_phone_dets:
                 x1, y1, x2, y2 = det["box"]
                 color = (0, 0, 255) if (phone_det_used is not None and det["box"] == phone_det_used["box"]) else (255, 0, 255)
@@ -954,7 +982,7 @@ def main():
                 cv2.putText(frame, f"Phone {det['conf']:.2f}", (x1, max(20, y1 - 8)),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
-            # Xếp trạng thái theo ưu tiên
+            # Phân cấp trạng thái ưu tiên hiển thị lên UI
             has_drowsy = any(msg.startswith("BUON NGU") for msg in alert_messages)
             has_phone = any("dien thoai" in msg for msg in alert_messages)
             has_distracted = any(msg.startswith("MAT TAP TRUNG") for msg in alert_messages)
@@ -971,14 +999,15 @@ def main():
             elif has_distracted:
                 status, status_color = "Mat tap trung", (0, 165, 255)
 
-            # Ánh sáng yếu
+            # Cảnh báo ánh sáng yếu (Nếu tối quá sẽ bỏ qua phân tích tư thế/mắt)
             low_light_active = low_light_since is not None and (now - low_light_since) >= LOW_LIGHT_SECONDS
             if low_light_active:
                 alert_messages.clear()
                 status = "Anh sang yeu - khong the giam sat"
                 status_color = (0, 165, 255)
 
-            # ===== REALTIME BLYNK STATUS (V0) =====
+            # ===== BLYNK STATUS REAL-TIME (V0) =====
+            # Chỉ ghi đè lên Blynk khi trạng thái thay đổi để tiết kiệm băng thông
             if blynk_enabled and blynk is not None and status != last_blynk_status:
                 try:
                     if blynk.connected():
@@ -987,7 +1016,7 @@ def main():
                 except Exception as e:
                     print(f"[BLYNK] Loi gui status V0: {e}")
 
-            # ===== PERIODIC BLYNK SEND (V1-V5 mỗi 1 phút - 60 giây) =====
+            # ===== BLYNK PERIODIC SYNC (Đồng bộ toàn bộ V1-V5 mỗi 60 giây) =====
             if blynk_enabled and blynk is not None and (now - last_blynk_send_time) >= 60.0:
                 try:
                     if blynk.connected():
@@ -1001,11 +1030,12 @@ def main():
                 except Exception as e:
                     print(f"[BLYNK] Loi gui du lieu dinh ky: {e}")
 
-            # Overlay giao diện
+            # Vẽ UI overlay hiển thị chỉ số lên Frame
             put_status_text(frame, status, status_color)
             cv2.putText(frame, f"FPS: {fps_display:.1f}", (frame_w - 160, 42),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
 
+            # Bảng thống kê bộ đếm hành vi góc trên bên phải
             cv2.rectangle(frame, (frame_w - 290, 80), (frame_w - 10, 260), (0, 0, 0), -1)
             cv2.rectangle(frame, (frame_w - 290, 80), (frame_w - 10, 260), (0, 255, 255), 1)
             cv2.putText(frame, "BO DEM HANH VI:", (frame_w - 270, 105), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 2)
@@ -1015,6 +1045,7 @@ def main():
             cv2.putText(frame, f"V4 (Dien thoai): {count4}", (frame_w - 270, 220), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             cv2.putText(frame, f"V5 (Bat thuong): {count5}", (frame_w - 270, 250), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
+            # Hiển thị tối đa 4 dòng thông tin cảnh báo ở góc dưới bên trái
             for i, msg in enumerate(alert_messages[:4]):
                 color = (0, 0, 255) if msg.startswith("BUON NGU") else (
                     (255, 0, 255) if "dien thoai" in msg else (0, 165, 255)
@@ -1027,25 +1058,24 @@ def main():
                             f"CANH BAO: Anh sang yeu (mean={light_mean:.0f}, std={light_std:.0f})",
                             (20, frame_h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
 
+            # Phát âm thanh cảnh báo ngắn (Bíp) nếu kích hoạt cảnh báo mới
             if alert_messages and (now - last_alert_time) >= ALERT_COOLDOWN_SECONDS:
                 play_alert()
                 last_alert_time = now
 
             cv2.imshow("He thong phat hien buon ngu, mat tap trung va dien thoai", frame)
 
+            # Lắng nghe phím bấm thoát (Q)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
                 print("[INFO] Nguoi dung an 'Q' de thoat. Dang dung camera...")
                 system_state = "SAVING_DATA"
                 break
 
-    # Vòng lặp main kết thúc bình thường
+    # Main loop ends
     pass
 
 
-# ==============================================================================
-# 7. ĐIỂM CHẠY CHƯƠNG TRÌNH CHÍNH (BẢO VỆ DỌN DẸP LỖI)
-# ==============================================================================
 if __name__ == "__main__":
     try:
         main()
@@ -1060,6 +1090,7 @@ if __name__ == "__main__":
                 print(f"[ERROR] Loi giai phong camera: {e}")
         cv2.destroyAllWindows()
 
+        # Tiến trình gửi dữ liệu cuối cùng lên Blynk khi đóng ứng dụng
         if blynk_enabled and blynk is not None:
             send_data_to_blynk(blynk, blynk_enabled, status)
         else:

@@ -1,26 +1,164 @@
-        /___/ for Python v0.2.0 (Linux)
+PHẦN 2 — THAY TOÀN BỘ KHỐI BLYNK
+XÓA TOÀN BỘ ĐOẠN NÀY
+import BlynkLib
 
-[BLYNK] Dang khoi tao ket noi...
-[BLYNK] Thu ket noi 1/4: sgp1.blynk.cloud:80...
-[BLYNK] sgp1.blynk.cloud:80 loi: Connection with the Blynk server sgp1.blynk.cloud:80 failed
-[BLYNK] Thu ket noi 2/4: sgp1.blynk.cloud:8080...
-[BLYNK] sgp1.blynk.cloud:8080 loi: Connection with the Blynk server sgp1.blynk.cloud:8080 failed
-[BLYNK] Thu ket noi 3/4: blynk.cloud:80...
-[BLYNK] blynk.cloud:80 loi: Connection with the Blynk server blynk.cloud:80 failed
-[BLYNK] Thu ket noi 4/4: blynk.cloud:8080...
-[BLYNK] blynk.cloud:8080 loi: Connection with the Blynk server blynk.cloud:8080 failed
-[ERROR] Loi Blynk: Khong the khoi tao BlynkLib
-2026-05-28 14:18:14.812839894 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card1": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"
-2026-05-28 14:18:14.813006927 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card0": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card0/device/vendor"
+print("[BLYNK] Dang khoi tao ket noi...")
+
+blynk = None
+servers_to_try = [
+    ("sgp1.blynk.cloud", 80),
+    ("sgp1.blynk.cloud", 8080),
+    ("blynk.cloud", 80),
+    ("blynk.cloud", 8080),
+]
+
+for i, (srv, prt) in enumerate(servers_to_try):
+    try:
+        print(f"[BLYNK] Thu ket noi {i+1}/{len(servers_to_try)}: {srv}:{prt}...")
+        blynk = BlynkLib.Blynk(BLYNK_AUTH_TOKEN, server=srv, port=prt)
+        print(f"[BLYNK] Khoi tao OK voi {srv}:{prt}")
+        break
+    except Exception as e:
+        print(f"[BLYNK] {srv}:{prt} loi: {e}")
+        blynk = None
+THAY BẰNG ĐOẠN NÀY
+import blynklib
+
+print("[BLYNK] Dang khoi tao ket noi...")
+
+BLYNK_SERVER = "blynk.cloud"
+
+try:
+    blynk = blynklib.Blynk(
+        BLYNK_AUTH_TOKEN,
+        server=BLYNK_SERVER,
+        port=80
+    )
+
+    print("[BLYNK] Da tao client")
+
+    # test kết nối
+    timeout = time.time() + 10
+    connected = False
+
+    while time.time() < timeout:
+        blynk.run()
+        time.sleep(0.1)
+
+        try:
+            if blynk.connected():
+                connected = True
+                break
+        except:
+            pass
+
+    if connected:
+        print("[BLYNK] Ket noi thanh cong")
+        blynk_enabled = True
+    else:
+        print("[BLYNK] Timeout ket noi")
+        blynk_enabled = False
+        blynk = None
+
+except Exception as e:
+    print(f"[BLYNK ERROR] {e}")
+    blynk_enabled = False
+    blynk = None
+PHẦN 3 — FIX INTERNET CHECK
+
+Thêm hàm này phía trên main():
+
+import socket
+
+def check_internet():
+    try:
+        socket.create_connection(("8.8.8.8", 53), timeout=3)
+        return True
+    except OSError:
+        return False
+
+Rồi thêm vào đầu main():
+
+if not check_internet():
+    print("[ERROR] Raspberry Pi khong co internet")
+    return
+PHẦN 4 — FIX WARNING ONNX + TENSORFLOW
+THÊM CÁC DÒNG NÀY
+
+Ngay dưới:
+
+os.environ["ONNXRUNTIME_DISABLE_GPU"] = "1"
+
+thêm:
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+os.environ["MEDIAPIPE_DISABLE_GPU"] = "1"
+PHẦN 5 — FIX CAMERA CHO RASPBERRY PI
+
+Thay:
+
+cap = cv2.VideoCapture(CAMERA_INDEX)
+
+bằng:
+
+cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_V4L2)
+PHẦN 6 — FIX CPUINFO ERROR
+
+Thông báo:
+
 Error in cpuinfo: prctl(PR_SVE_GET_VL) failed
-INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
-WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
-W0000 00:00:1779952695.626534    4673 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
-W0000 00:00:1779952695.680695    4675 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
-W0000 00:00:1779952744.752508    4675 landmark_projection_calculator.cc:186] Using NORM_RECT without IMAGE_DIMENSIONS is only supported for the square ROI. Provide IMAGE_DIMENSIONS or use PROJECTION_MATRIX.
-[INFO] Nguoi dung an 'Q' de thoat. Dang dung camera...
 
-[INFO] Giai phong camera va cua so hien thi...
-[BLYNK] Khong gui vi chua ket noi
-[INFO] Da thoat he thong hoan toan.
-(venv) phat@phat:~/Documents/ce_comedians/project $ 
+KHÔNG phải lỗi chương trình.
+
+Đó là warning ARM CPU trên Raspberry Pi.
+
+Có thể bỏ qua.
+
+PHẦN 7 — FIX BLYNK SEND
+
+Thay toàn bộ:
+
+blynk.virtual_write(...)
+
+bằng:
+
+try:
+    if blynk.connected():
+        blynk.virtual_write(...)
+except:
+    pass
+
+Ví dụ:
+
+try:
+    if blynk.connected():
+        blynk.virtual_write(1, count1)
+except Exception as e:
+    print(e)
+PHẦN 8 — THÊM AUTO RECONNECT
+
+Trong vòng while chính:
+
+if blynk_enabled and blynk is not None:
+
+thay bằng:
+
+if blynk_enabled and blynk is not None:
+    try:
+        blynk.run()
+
+        if not blynk.connected():
+            print("[BLYNK] Dang reconnect...")
+            time.sleep(2)
+
+    except Exception as e:
+        print(f"[BLYNK] Mat ket noi: {e}")
+KẾT QUẢ SAU KHI SỬA
+
+Bạn sẽ không còn:
+
+Connection with the Blynk server failed
+
+và sẽ thấy:
+
+[BLYNK] Ket noi thanh cong

@@ -1,22 +1,24 @@
-    ___  __          __
-   / _ )/ /_ _____  / /__
-  / _  / / // / _ \/  '_/
- /____/_/\_, /_//_/_/\_\
         /___/ for Python v0.2.0 (Linux)
 
 [BLYNK] Dang khoi tao ket noi...
-[ERROR] Loi Blynk: BlynkProtocol.__init__() got an unexpected keyword argument 'ssl'
-2026-05-28 14:12:50.572343428 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card1": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"
-2026-05-28 14:12:50.572498850 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card0": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card0/device/vendor"
+[BLYNK] Thu ket noi 1/4: sgp1.blynk.cloud:80...
+[BLYNK] sgp1.blynk.cloud:80 loi: Connection with the Blynk server sgp1.blynk.cloud:80 failed
+[BLYNK] Thu ket noi 2/4: sgp1.blynk.cloud:8080...
+[BLYNK] sgp1.blynk.cloud:8080 loi: Connection with the Blynk server sgp1.blynk.cloud:8080 failed
+[BLYNK] Thu ket noi 3/4: blynk.cloud:80...
+[BLYNK] blynk.cloud:80 loi: Connection with the Blynk server blynk.cloud:80 failed
+[BLYNK] Thu ket noi 4/4: blynk.cloud:8080...
+[BLYNK] blynk.cloud:8080 loi: Connection with the Blynk server blynk.cloud:8080 failed
+[ERROR] Loi Blynk: Khong the khoi tao BlynkLib
+2026-05-28 14:18:14.812839894 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card1": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"
+2026-05-28 14:18:14.813006927 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card0": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card0/device/vendor"
 Error in cpuinfo: prctl(PR_SVE_GET_VL) failed
 INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
 WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
-W0000 00:00:1779952371.317024    4593 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
-W0000 00:00:1779952371.370822    4593 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
-q^C
-[SIGNAL] Nhan duoc tin hieu 2. Dang chuyen sang trang thai SAVING_DATA...
-
-[INFO] Nhan tin hieu ngat KeyboardInterrupt.
+W0000 00:00:1779952695.626534    4673 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1779952695.680695    4675 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1779952744.752508    4675 landmark_projection_calculator.cc:186] Using NORM_RECT without IMAGE_DIMENSIONS is only supported for the square ROI. Provide IMAGE_DIMENSIONS or use PROJECTION_MATRIX.
+[INFO] Nguoi dung an 'Q' de thoat. Dang dung camera...
 
 [INFO] Giai phong camera va cua so hien thi...
 [BLYNK] Khong gui vi chua ket noi

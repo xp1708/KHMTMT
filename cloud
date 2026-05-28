@@ -1,1 +1,190 @@
-d
+```python
+import cv2
+import mediapipe as mp
+import time
+import BlynkLib
+
+# =========================
+# BLYNK CONFIG
+# =========================
+BLYNK_AUTH = "0cS7u48kkbPHi_iecesgzfkIrjOFAUf5"
+
+blynk = BlynkLib.Blynk(BLYNK_AUTH)
+
+# =========================
+# CAMERA
+# =========================
+cap = cv2.VideoCapture(0)
+
+# =========================
+# MEDIAPIPE
+# =========================
+mp_face_mesh = mp.solutions.face_mesh
+face_mesh = mp_face_mesh.FaceMesh(
+    max_num_faces=1,
+    refine_landmarks=True,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5
+)
+
+# =========================
+# THRESHOLD
+# =========================
+EAR_THRESHOLD = 0.20
+DISTRACT_SECONDS = 3
+
+# =========================
+# EYE LANDMARK
+# =========================
+LEFT_EYE = [33, 160, 158, 133, 153, 144]
+RIGHT_EYE = [362, 385, 387, 263, 373, 380]
+
+# =========================
+# TIMER
+# =========================
+distract_since = None
+
+# =========================
+# TINH KHOANG CACH
+# =========================
+def dist(p1, p2):
+    return ((p1[0]-p2[0])**2 + (p1[1]-p2[1])**2) ** 0.5
+
+# =========================
+# EAR
+# =========================
+def eye_aspect_ratio(eye):
+    p1, p2, p3, p4, p5, p6 = eye
+
+    vertical1 = dist(p2, p6)
+    vertical2 = dist(p3, p5)
+    horizontal = dist(p1, p4)
+
+    if horizontal == 0:
+        return 0
+
+    return (vertical1 + vertical2) / (2.0 * horizontal)
+
+# =========================
+# MAIN LOOP
+# =========================
+while True:
+
+    blynk.run()
+
+    success, frame = cap.read()
+
+    if not success:
+        break
+
+    frame = cv2.flip(frame, 1)
+
+    h, w, _ = frame.shape
+
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+    results = face_mesh.process(rgb)
+
+    status = "Tap trung"
+
+    if results.multi_face_landmarks:
+
+        face_landmarks = results.multi_face_landmarks[0]
+
+        points = []
+
+        for lm in face_landmarks.landmark:
+            x = int(lm.x * w)
+            y = int(lm.y * h)
+            points.append((x, y))
+
+        # =========================
+        # EAR
+        # =========================
+        left_eye = [points[i] for i in LEFT_EYE]
+        right_eye = [points[i] for i in RIGHT_EYE]
+
+        left_ear = eye_aspect_ratio(left_eye)
+        right_ear = eye_aspect_ratio(right_eye)
+
+        ear = (left_ear + right_ear) / 2
+
+        # =========================
+        # DETECT SLEEP
+        # =========================
+        if ear < EAR_THRESHOLD:
+
+            if distract_since is None:
+                distract_since = time.time()
+
+            elapsed = time.time() - distract_since
+
+            if elapsed > DISTRACT_SECONDS:
+
+                status = "Buon ngu"
+
+                # GUI BLYNK
+                blynk.virtual_write(0, 1)
+                blynk.virtual_write(1, "BUON NGU")
+
+        else:
+
+            distract_since = None
+
+            status = "Tap trung"
+
+            blynk.virtual_write(0, 0)
+            blynk.virtual_write(1, "TAP TRUNG")
+
+        # =========================
+        # DRAW
+        # =========================
+        for p in points:
+            cv2.circle(frame, p, 1, (0,255,0), -1)
+
+        cv2.putText(
+            frame,
+            f"EAR: {ear:.2f}",
+            (20,40),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0,255,0),
+            2
+        )
+
+    else:
+
+        status = "Khong thay mat"
+
+        blynk.virtual_write(0, 2)
+        blynk.virtual_write(1, "KHONG THAY MAT")
+
+    # =========================
+    # STATUS
+    # =========================
+    cv2.putText(
+        frame,
+        status,
+        (20,80),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1,
+        (0,0,255),
+        2
+    )
+
+    # =========================
+    # SHOW
+    # =========================
+    cv2.imshow("AI Attention Monitor", frame)
+
+    key = cv2.waitKey(1)
+
+    if key == ord('q'):
+        break
+
+# =========================
+# RELEASE
+# =========================
+cap.release()
+cv2.destroyAllWindows()
+```

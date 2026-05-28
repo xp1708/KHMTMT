@@ -1,5 +1,19 @@
-venv) phat@phat:~/Documents/ce_comedians/project $ python3 main.py
+(venv) phat@phat:~/Documents/ce_comedians/project $ cd ~/Documents/ce_comedians/project
+source venv/bin/activate
+(venv) phat@phat:~/Documents/ce_comedians/project $ python3 main.py
   File "/home/phat/Documents/ce_comedians/project/main.py", line 627
     distracted_now = abs(yaw_rel) > (YAW_EXIT_THRESHOLD if distracted_state else YAWYAW_ENTER_THRESHOLD := YAW_ENTER_THRESHOLD)
                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 SyntaxError: cannot use assignment expressions with conditional expression
+(venv) phat@phat:~/Documents/ce_comedians/project $ python3 main.py
+2026-05-28 11:15:08.072518999 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card1": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"
+2026-05-28 11:15:08.072663638 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card0": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card0/device/vendor"
+Error in cpuinfo: prctl(PR_SVE_GET_VL) failed
+INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+W0000 00:00:1779941708.331937    6697 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1779941708.380098    6697 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+qt.qpa.plugin: Could not find the Qt platform plugin "wayland" in "/home/phat/Documents/ce_comedians/project/venv/lib/python3.11/site-packages/cv2/qt/plugins"
+W0000 00:00:1779941715.454131    6699 landmark_projection_calculator.cc:186] Using NORM_RECT without IMAGE_DIMENSIONS is only supported for the square ROI. Provide IMAGE_DIMENSIONS or use PROJECTION_MATRIX.
+^C
+[OS SIGNAL] Nhận được tín hiệu ngắt 2. Đang chuyển trạng thái sang SAVING_DATA...

@@ -1,114 +1,132 @@
+import os
+
+# ==============================================================================
+# 0. CHẶN CẢNH BÁO HỆ THỐNG & TỐI ƯU HÓA GPU (Đặt trên cùng)
+# ==============================================================================
+os.environ["QT_QPA_PLATFORM"]       = "xcb"   # Sửa lỗi Qt Wayland plugin
+os.environ["GLOG_minloglevel"]       = "3"     # Tắt nhật ký MediaPipe
+os.environ["TF_CPP_MIN_LOG_LEVEL"]  = "3"     # Tắt nhật ký TensorFlow
+os.environ["ONNXRUNTIME_DISABLE_GPU"] = "1"   # Không dùng GPU cảnh báo ONNX
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"     # Ẩn thiết bị CUDA
+os.environ["MEDIAPIPE_DISABLE_GPU"] = "1"     # Buộc chạy MediaPipe trên CPU
+
 import cv2
 import mediapipe as mp
 import numpy as np
 import time
 import math
 import platform
+import signal
+import sys
+import socket
 
-# =========================
-# TUY CHON CHUNG
-# =========================
+# ==============================================================================
+# 1. CẤU HÌNH BLYNK
+# ==============================================================================
+os.environ["BLYNK_TEMPLATE_ID"]   = "TMPL6j2ujsf2j"
+os.environ["BLYNK_TEMPLATE_NAME"] = "AI Attention"
+
+BLYNK_AUTH_TOKEN = "0cS7u48kkbPHi_iecesgzfkIrjOFAUf5"  # Token của bạn
+
+# ==============================================================================
+# 2. NGƯỠNG HÀNH VI GIÁM SÁT
+# ==============================================================================
 CAMERA_INDEX = 0
 USE_PHONE_DETECTION = True
 
-# =========================
-# HIEN DIEN TRONG KHUNG HINH
-# =========================
-# TC-002: Chi xuat hien mot phan/nam sat mep khung hinh.
-# Vi code dang dung FaceMesh, he thong se danh gia theo khuon mat:
-# neu face box nam sat bien trai/phai/tren/duoi thi coi la chi xuat hien mot phan.
+# TC-002: Chỉ xuất hiện một phần
 PARTIAL_FACE_MARGIN_PX = 25
 PARTIAL_FACE_SECONDS = 1.0
 
-# TC-003: Cui xuong nhat do.
-# Phan biet voi ngu gat bang cach uu tien truong hop mat van mo
-# nhung dau cui manh trong mot khoang thoi gian ngan.
+# TC-003: Cúi đầu nhặt đồ
 PICK_OBJECT_SECONDS = 1.0
 PICK_HEAD_DROP_THRESHOLD = 28.0
 
-# =========================
-# NGUONG MAT / MIENG
-# =========================
-EAR_THRESHOLD = 0.20            # Eye Aspect Ratio - duoi nguong nay coi la mat nham
-MAR_THRESHOLD = 0.50            # Mouth Aspect Ratio - tren nguong nay coi la dang ngap
-EYE_CLOSED_SECONDS = 1.3        # Thoi gian mat nham lien tuc de canh bao
-YAWN_SECONDS = 1.0              # Thoi gian ngap lien tuc de canh bao
-DISTRACT_SECONDS = 4.5          # Thoi gian nhin lech lien tuc de canh bao
-NO_FACE_SECONDS = 2.0           # Thoi gian khong thay mat de canh bao
-ALERT_COOLDOWN_SECONDS = 2.0    # Khoang nghi giua 2 lan phat am thanh canh bao
+# Ngưỡng mắt / miệng / tư thế đầu
+EAR_THRESHOLD = 0.20
+MAR_THRESHOLD = 0.50
+EYE_CLOSED_SECONDS = 1.3
+YAWN_SECONDS = 1.0
+DISTRACT_SECONDS = 4.5
+NO_FACE_SECONDS = 2.0
+ALERT_COOLDOWN_SECONDS = 2.0
 
-# Tien bo sung
-# --- NGUONG CHO HANH VI BAT THUONG ---
-TILT_THRESHOLD = 25.0           # Goc nghieng dau (Roll)
-SHAKE_THRESHOLD = 15.0          # Bien do lac dau (Yaw)
-SHAKE_COUNT_LIMIT = 3           # So lan lac toi da
-MOVE_SPEED_THRESHOLD = 0.15     # Toc do di chuyen (chuan hoa)
+TILT_THRESHOLD = 25.0
+SHAKE_THRESHOLD = 15.0
+SHAKE_COUNT_LIMIT = 3
+MOVE_SPEED_THRESHOLD = 0.15
 
-
-# =========================
-# TOI UU HEAD POSE
-# =========================
-CALIBRATION_SECONDS = 2.0       # Thoi gian hieu chinh pose chuan ban dau
-HEAD_POSE_ALPHA = 0.25          # He so EMA filter (cang nho cang muot)
-MAX_ANGLE_JUMP = 20.0           # Gioi han nhay goc giua 2 frame de loc nhieu
-MIN_FACE_BOX_SIZE = 120         # Kich thuoc mat toi thieu de tinh head pose
-
-YAW_ENTER_THRESHOLD = 20.0      # Goc yaw de vao trang thai lech
-YAW_EXIT_THRESHOLD = 15.0       # Goc yaw de thoat trang thai lech (hysteresis)
-PITCH_ENTER_THRESHOLD = 20.0    # Goc pitch de vao trang thai guc dau
-PITCH_EXIT_THRESHOLD = 12.0     # Goc pitch de thoat trang thai guc dau (hysteresis)
-
-# Neu tren may ban cui dau lam pitch duong thi de = 1
-# Neu cui dau lam pitch am thi doi thanh -1
+# Tối ưu Head Pose
+CALIBRATION_SECONDS = 2.0
+HEAD_POSE_ALPHA = 0.25
+MAX_ANGLE_JUMP = 20.0
+MIN_FACE_BOX_SIZE = 120
+YAW_ENTER_THRESHOLD = 20.0
+YAW_EXIT_THRESHOLD = 15.0
+PITCH_ENTER_THRESHOLD = 20.0
+PITCH_EXIT_THRESHOLD = 12.0
 HEAD_DROP_SIGN = 1
 
-# =========================
-# PHAT HIEN DIEN THOAI
-# =========================
+# Phát hiện điện thoại
 PHONE_MODEL_PATH = "yolo11n.onnx"
-PHONE_CONF_THRESHOLD = 0.45             # Confidence toi thieu cua detection
-PHONE_USE_SECONDS = 1.5                 # Thoi gian cam dien thoai lien tuc de canh bao
-PHONE_DETECT_EVERY_N_FRAMES = 10      # Chay YOLO moi N frame de tiet kiem CPU
-PHONE_IOU_WITH_FACE_THRESHOLD = 0.02    # IoU toi thieu giua box phone va box mat
-PHONE_NEAR_FACE_EXPAND_PX = 180         # Mo rong vung mat de bat dien thoai gan mat
+PHONE_CONF_THRESHOLD = 0.45
+PHONE_USE_SECONDS = 1.5
+PHONE_DETECT_EVERY_N_FRAMES = 4
+PHONE_IOU_WITH_FACE_THRESHOLD = 0.02
+PHONE_NEAR_FACE_EXPAND_PX = 180
 
-# =========================
-# KIEM TRA ANH SANG
-# =========================
-# Hai metric:
-#   - too_dark: mean brightness qua thap (anh toi thuc su)
-#   - too_noisy: mean thap + std thap = camera dang boost gain, anh nhieu phang
-# Logitech C922 co auto-exposure nen can ca 2 metric. Tinh chinh theo setup thuc te.
-LOW_LIGHT_BRIGHTNESS_THRESHOLD = 60     # Nguong mean grayscale (0-255)
-LOW_LIGHT_NOISE_THRESHOLD = 15          # Nguong std grayscale khi camera boost gain
-LOW_LIGHT_SECONDS = 1.5                 # Thoi gian anh sang yeu lien tuc de canh bao
-LIGHT_CHECK_EVERY_N_FRAMES = 10         # Chay check_lighting moi N frame de tiet kiem CPU
+# Ánh sáng
+LOW_LIGHT_BRIGHTNESS_THRESHOLD = 60
+LOW_LIGHT_NOISE_THRESHOLD = 15
+LOW_LIGHT_SECONDS = 1.5
+LIGHT_CHECK_EVERY_N_FRAMES = 10
+CAMERA_RETRY_LIMIT = 5
 
-CAMERA_RETRY_LIMIT = 5   # ~1 giây nếu FPS = 5
-
-# =========================
-# MEDIAPIPE LANDMARK
-# =========================
-# 6 diem moi mat theo chuan EAR (Soukupova & Cech 2016)
 LEFT_EYE_IDX = [33, 160, 158, 133, 153, 144]
 RIGHT_EYE_IDX = [362, 385, 387, 263, 373, 380]
-# 3 cap diem doc mieng + 1 cap diem ngang mieng de tinh MAR
 MOUTH_TOP_BOTTOM = [(13, 14), (81, 178), (311, 402)]
 MOUTH_LEFT_RIGHT = (78, 308)
-
-# 6 landmark dung cho solvePnP de tinh huong dau
 HEAD_POSE_LANDMARKS = {
-    "nose_tip": 1,
-    "chin": 152,
-    "left_eye_outer": 33,
-    "right_eye_outer": 263,
-    "mouth_left": 61,
-    "mouth_right": 291,
+    "nose_tip": 1, "chin": 152,
+    "left_eye_outer": 33, "right_eye_outer": 263,
+    "mouth_left": 61, "mouth_right": 291
 }
+
+# ==============================================================================
+# 3. BIẾN TOÀN CỤC TRẠNG THÁI
+# ==============================================================================
+count1 = 0  # V1: Buồn ngủ
+count2 = 0  # V2: Nhìn lệch
+count3 = 0  # V3: Vắng mặt
+count4 = 0  # V4: Sử dụng điện thoại
+count5 = 0  # V5: Hành vi bất thường
+
+system_state = "RUNNING"
+cap = None
+blynk = None
+blynk_enabled = False
+status = "Tap trung"
+
+# ==============================================================================
+# 4. HÀM BỔ TRỢ HỆ THỐNG
+# ==============================================================================
+def signal_handler(sig, frame):
+    global system_state
+    print(f"\n[SIGNAL] Nhan duoc tin hieu {sig}. Dang chuyen sang trang thai SAVING_DATA...")
+    system_state = "SAVING_DATA"
+    raise KeyboardInterrupt
+
+
+def check_internet():
+    """Kiểm tra xem Raspberry Pi có đang online hay không."""
+    try:
+        socket.create_connection(("8.8.8.8", 53), timeout=3)
+        return True
+    except OSError:
+        return False
 
 
 def play_alert():
-    """Phat am thanh canh bao. Tren Pi/Linux dung ASCII Bell, tren Windows dung winsound."""
     try:
         if platform.system().lower().startswith("win"):
             import winsound
@@ -120,18 +138,6 @@ def play_alert():
 
 
 def check_lighting(frame, brightness_threshold=60, noise_threshold=15):
-    """
-    Kiem tra dieu kien anh sang cua frame.
-
-    Tra ve (is_low_light, mean, std):
-      - is_low_light: True neu anh qua toi HOAC qua nhieu
-      - mean: gia tri brightness trung binh (0-255)
-      - std: do lech chuan brightness, dung de phat hien camera boost gain
-
-    Ly do dung 2 metric: C922 co auto-exposure se tu boost gain khi thieu sang,
-    lam mean van cao nhung anh nhieu, MediaPipe se fail. Dung mean + std de bat
-    ca 2 truong hop.
-    """
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     mean = gray.mean()
     std = gray.std()
@@ -141,15 +147,10 @@ def check_lighting(frame, brightness_threshold=60, noise_threshold=15):
 
 
 def dist(p1, p2):
-    """Khoang cach Euclidean giua 2 diem 2D."""
     return float(np.linalg.norm(np.array(p1, dtype=np.float64) - np.array(p2, dtype=np.float64)))
 
 
 def eye_aspect_ratio(eye_points):
-    """
-    EAR = (|p2-p6| + |p3-p5|) / (2 * |p1-p4|)
-    Mat mo: EAR ~ 0.25-0.30. Mat nham: EAR ~ 0.
-    """
     p1, p2, p3, p4, p5, p6 = eye_points
     vertical_1 = dist(p2, p6)
     vertical_2 = dist(p3, p5)
@@ -160,7 +161,6 @@ def eye_aspect_ratio(eye_points):
 
 
 def mouth_aspect_ratio(face_points):
-    """MAR = trung_binh(khoang_cach_doc) / khoang_cach_ngang_mieng."""
     w = dist(face_points[MOUTH_LEFT_RIGHT[0]], face_points[MOUTH_LEFT_RIGHT[1]])
     if w == 0:
         return 0.0
@@ -169,7 +169,6 @@ def mouth_aspect_ratio(face_points):
 
 
 def normalize_angle(angle):
-    """Chuan hoa goc ve khoang (-180, 180] de tranh angle wrapping."""
     while angle > 180:
         angle -= 360
     while angle < -180:
@@ -178,14 +177,12 @@ def normalize_angle(angle):
 
 
 def smooth_value(prev_val, new_val, alpha=0.25):
-    """EMA filter: S_t = alpha * x_t + (1-alpha) * S_{t-1}."""
     if prev_val is None:
         return float(new_val)
     return float(alpha * new_val + (1 - alpha) * prev_val)
 
 
 def clamp_angle_jump(prev_val, new_val, max_jump=20.0):
-    """Gioi han bien do thay doi goc giua 2 frame de loai outlier truoc khi EMA."""
     if prev_val is None:
         return float(new_val)
     delta = normalize_angle(new_val - prev_val)
@@ -194,24 +191,20 @@ def clamp_angle_jump(prev_val, new_val, max_jump=20.0):
 
 
 def rotation_matrix_to_euler_angles(R):
-    """Chuyen rotation matrix 3x3 sang Euler angles (pitch, yaw, roll) theo do."""
     sy = math.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
     singular = sy < 1e-6
-
     if not singular:
-        x = math.atan2(R[2, 1], R[2, 2])   # pitch
-        y = math.atan2(-R[2, 0], sy)       # yaw
-        z = math.atan2(R[1, 0], R[0, 0])   # roll
+        x = math.atan2(R[2, 1], R[2, 2])
+        y = math.atan2(-R[2, 0], sy)
+        z = math.atan2(R[1, 0], R[0, 0])
     else:
         x = math.atan2(-R[1, 2], R[1, 1])
         y = math.atan2(-R[2, 0], sy)
         z = 0
-
     return np.degrees(np.array([x, y, z], dtype=np.float64))
 
 
 def get_face_box(face_points):
-    """Tinh bounding box bao toan bo landmark khuon mat."""
     xs = [p[0] for p in face_points]
     ys = [p[1] for p in face_points]
     x_min, x_max = min(xs), max(xs)
@@ -220,130 +213,79 @@ def get_face_box(face_points):
 
 
 def box_iou(boxA, boxB):
-    """Intersection over Union giua 2 bounding box."""
     ax1, ay1, ax2, ay2 = boxA
     bx1, by1, bx2, by2 = boxB
-
-    inter_x1 = max(ax1, bx1)
-    inter_y1 = max(ay1, by1)
-    inter_x2 = min(ax2, bx2)
-    inter_y2 = min(ay2, by2)
-
+    inter_x1, inter_y1 = max(ax1, bx1), max(ay1, by1)
+    inter_x2, inter_y2 = min(ax2, bx2), min(ay2, by2)
     inter_w = max(0, inter_x2 - inter_x1)
     inter_h = max(0, inter_y2 - inter_y1)
     inter_area = inter_w * inter_h
-
     area_a = max(0, ax2 - ax1) * max(0, ay2 - ay1)
     area_b = max(0, bx2 - bx1) * max(0, by2 - by1)
     union = area_a + area_b - inter_area
-
-    if union <= 0:
-        return 0.0
-    return inter_area / union
+    return inter_area / union if union > 0 else 0.0
 
 
 def expand_box(box, expand_px, frame_w, frame_h):
-    """Mo rong box ra 4 phia expand_px pixel, clamp theo kich thuoc frame."""
     x1, y1, x2, y2 = box
-    x1 = max(0, int(x1 - expand_px))
-    y1 = max(0, int(y1 - expand_px))
-    x2 = min(frame_w - 1, int(x2 + expand_px))
-    y2 = min(frame_h - 1, int(y2 + expand_px))
-    return (x1, y1, x2, y2)
+    return (
+        max(0, int(x1 - expand_px)),
+        max(0, int(y1 - expand_px)),
+        min(frame_w - 1, int(x2 + expand_px)),
+        min(frame_h - 1, int(y2 + expand_px))
+    )
 
 
 def center_in_box(point, box):
-    """Kiem tra mot diem co nam trong bounding box khong."""
     x, y = point
     x1, y1, x2, y2 = box
     return x1 <= x <= x2 and y1 <= y <= y2
 
 
 def is_partial_face(face_box, frame_w, frame_h, margin_px=25):
-    """
-    TC-002: Kiem tra nguoi dung chi xuat hien mot phan trong khung hinh.
-
-    Do he thong hien tai dung MediaPipe FaceMesh thay vi Pose toan than,
-    ta suy luan dua tren face box:
-      - Mat nam sat bien trai/phai/tren/duoi khung hinh
-      - Khuon mat co nguy co bi cat mot phan
-    """
     if face_box is None:
         return False
-
     x1, y1, x2, y2 = face_box
-
-    near_left = x1 <= margin_px
-    near_top = y1 <= margin_px
-    near_right = x2 >= frame_w - margin_px
-    near_bottom = y2 >= frame_h - margin_px
-
-    return near_left or near_top or near_right or near_bottom
+    return x1 <= margin_px or y1 <= margin_px or x2 >= frame_w - margin_px or y2 >= frame_h - margin_px
 
 
 def estimate_head_pose(face_points, frame_width, frame_height, prev_rvec=None, prev_tvec=None):
-    """
-    Uoc luong huong dau bang solvePnP voi 6 landmark khuon mat.
-    Neu co prev_rvec/tvec se dung lam initial guess de hoi tu nhanh hon.
-    """
-    image_points = np.array(
-        [
-            face_points[HEAD_POSE_LANDMARKS["nose_tip"]],
-            face_points[HEAD_POSE_LANDMARKS["chin"]],
-            face_points[HEAD_POSE_LANDMARKS["left_eye_outer"]],
-            face_points[HEAD_POSE_LANDMARKS["right_eye_outer"]],
-            face_points[HEAD_POSE_LANDMARKS["mouth_left"]],
-            face_points[HEAD_POSE_LANDMARKS["mouth_right"]],
-        ],
-        dtype=np.float64,
-    )
+    image_points = np.array([
+        face_points[HEAD_POSE_LANDMARKS["nose_tip"]],
+        face_points[HEAD_POSE_LANDMARKS["chin"]],
+        face_points[HEAD_POSE_LANDMARKS["left_eye_outer"]],
+        face_points[HEAD_POSE_LANDMARKS["right_eye_outer"]],
+        face_points[HEAD_POSE_LANDMARKS["mouth_left"]],
+        face_points[HEAD_POSE_LANDMARKS["mouth_right"]],
+    ], dtype=np.float64)
 
-    # Toa do 3D chuan hoa cua khuon mat trung binh (don vi mm)
-    model_points = np.array(
-        [
-            (0.0, 0.0, 0.0),
-            (0.0, -63.6, -12.5),
-            (-43.3, 32.7, -26.0),
-            (43.3, 32.7, -26.0),
-            (-28.9, -28.9, -24.1),
-            (28.9, -28.9, -24.1),
-        ],
-        dtype=np.float64,
-    )
+    model_points = np.array([
+        (0.0, 0.0, 0.0),
+        (0.0, -63.6, -12.5),
+        (-43.3, 32.7, -26.0),
+        (43.3, 32.7, -26.0),
+        (-28.9, -28.9, -24.1),
+        (28.9, -28.9, -24.1),
+    ], dtype=np.float64)
 
-    # Camera matrix gia dinh tieu cu = frame width (xap xi webcam thong thuong)
     focal_length = frame_width
     center = (frame_width / 2.0, frame_height / 2.0)
-
     camera_matrix = np.array(
-        [
-            [focal_length, 0, center[0]],
-            [0, focal_length, center[1]],
-            [0, 0, 1],
-        ],
-        dtype=np.float64,
+        [[focal_length, 0, center[0]],
+         [0, focal_length, center[1]],
+         [0, 0, 1]], dtype=np.float64
     )
-
     dist_coeffs = np.zeros((4, 1), dtype=np.float64)
 
     if prev_rvec is not None and prev_tvec is not None:
         success, rotation_vec, translation_vec = cv2.solvePnP(
-            model_points,
-            image_points,
-            camera_matrix,
-            dist_coeffs,
-            prev_rvec,
-            prev_tvec,
-            True,
-            cv2.SOLVEPNP_ITERATIVE,
+            model_points, image_points, camera_matrix, dist_coeffs,
+            prev_rvec, prev_tvec, True, cv2.SOLVEPNP_ITERATIVE
         )
     else:
         success, rotation_vec, translation_vec = cv2.solvePnP(
-            model_points,
-            image_points,
-            camera_matrix,
-            dist_coeffs,
-            flags=cv2.SOLVEPNP_ITERATIVE,
+            model_points, image_points, camera_matrix, dist_coeffs,
+            flags=cv2.SOLVEPNP_ITERATIVE
         )
 
     if not success:
@@ -351,62 +293,42 @@ def estimate_head_pose(face_points, frame_width, frame_height, prev_rvec=None, p
 
     rotation_mat, _ = cv2.Rodrigues(rotation_vec)
     pitch, yaw, roll = rotation_matrix_to_euler_angles(rotation_mat)
-
     pitch = normalize_angle(pitch)
     yaw = normalize_angle(yaw)
     roll = normalize_angle(roll)
 
-    # Project 1 diem o truoc mui de ve vector huong dau
     nose_end_point2d, _ = cv2.projectPoints(
         np.array([(0.0, 0.0, 1000.0)], dtype=np.float64),
-        rotation_vec,
-        translation_vec,
-        camera_matrix,
-        dist_coeffs,
+        rotation_vec, translation_vec, camera_matrix, dist_coeffs
     )
-
-    nose_tip = tuple(map(int, image_points[0]))
-    nose_direction = tuple(map(int, nose_end_point2d[0][0]))
-
     return {
-        "pitch": float(pitch),
-        "yaw": float(yaw),
-        "roll": float(roll),
-        "nose_tip": nose_tip,
-        "nose_direction": nose_direction,
-        "rvec": rotation_vec,
-        "tvec": translation_vec,
+        "pitch": float(pitch), "yaw": float(yaw), "roll": float(roll),
+        "nose_tip": tuple(map(int, image_points[0])),
+        "nose_direction": tuple(map(int, nose_end_point2d[0][0])),
+        "rvec": rotation_vec, "tvec": translation_vec
     }
 
 
 def put_status_text(frame, status, color=(0, 255, 0)):
-    """Ve banner trang thai o goc tren ben trai."""
     cv2.rectangle(frame, (10, 10), (760, 95), (0, 0, 0), -1)
     cv2.putText(frame, f"Trang thai: {status}", (20, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
     cv2.putText(frame, "Nhan Q de thoat", (20, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (200, 200, 200), 1)
 
 
 def median_of_tuples(data):
-    """Tinh median tren tung chieu cua tap tuple (dung cho calibration)."""
     arr = np.array(data, dtype=np.float64)
     return np.median(arr[:, 0]), np.median(arr[:, 1]), np.median(arr[:, 2])
 
 
 def load_phone_model():
-    """Load YOLO11n ONNX model va parse class names tu metadata."""
     if not USE_PHONE_DETECTION:
         return None, {}
     try:
         import onnxruntime as ort
         import ast
-        session = ort.InferenceSession(
-            PHONE_MODEL_PATH,
-            providers=["CPUExecutionProvider"]
-        )
+        session = ort.InferenceSession(PHONE_MODEL_PATH, providers=["CPUExecutionProvider"])
         meta = session.get_modelmeta().custom_metadata_map
-        names = {}
-        if "names" in meta:
-            names = ast.literal_eval(meta["names"])
+        names = ast.literal_eval(meta["names"]) if "names" in meta else {}
         return session, names
     except Exception as e:
         print(f"[WARN] Khong tai duoc model phone: {e}")
@@ -414,13 +336,11 @@ def load_phone_model():
 
 
 def detect_phone(model, frame_bgr):
-    """Chay YOLO inference, loc detection cua class 'cell phone' (COCO id=67)."""
     detections = []
     if model is None:
         return detections
     try:
         PHONE_CLASS_ID = 67
-        # Preprocess: BGR -> RGB -> resize 640x640 -> normalize -> NCHW
         img = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         img_resized = cv2.resize(img, (640, 640))
         img_input = img_resized.astype(np.float32) / 255.0
@@ -432,8 +352,7 @@ def detect_phone(model, frame_bgr):
 
         predictions = outputs[0][0].T
         orig_h, orig_w = frame_bgr.shape[:2]
-        scale_x = orig_w / 640.0
-        scale_y = orig_h / 640.0
+        scale_x, scale_y = orig_w / 640.0, orig_h / 640.0
 
         for pred in predictions:
             cx, cy, w, h = pred[0], pred[1], pred[2], pred[3]
@@ -442,412 +361,553 @@ def detect_phone(model, frame_bgr):
             conf = float(class_scores[class_id])
             if class_id != PHONE_CLASS_ID or conf < PHONE_CONF_THRESHOLD:
                 continue
-            # Convert cx,cy,w,h -> x1,y1,x2,y2 va scale ve kich thuoc frame goc
             x1 = max(0, int((cx - w / 2) * scale_x))
             y1 = max(0, int((cy - h / 2) * scale_y))
             x2 = min(orig_w - 1, int((cx + w / 2) * scale_x))
             y2 = min(orig_h - 1, int((cy + h / 2) * scale_y))
-            detections.append({
-                "box": (x1, y1, x2, y2),
-                "conf": conf,
-                "label": "cell phone",
-            })
+            detections.append({"box": (x1, y1, x2, y2), "conf": conf, "label": "cell phone"})
     except Exception as e:
         print(f"[WARN] Loi detect phone: {e}")
     return detections
 
 
 def is_phone_usage(phone_dets, face_box, frame_w, frame_h):
-    """
-    Chi coi la dang dung dien thoai neu:
-    - box phone giao voi face box mot chut
-    HOAC
-    - tam phone nam trong vung face box mo rong
-    """
     if not phone_dets or face_box is None:
         return False, None
-
     expanded_face = expand_box(face_box, PHONE_NEAR_FACE_EXPAND_PX, frame_w, frame_h)
-
     for det in phone_dets:
         phone_box = det["box"]
         iou = box_iou(phone_box, face_box)
         cx = (phone_box[0] + phone_box[2]) // 2
         cy = (phone_box[1] + phone_box[3]) // 2
-
-        near_face = center_in_box((cx, cy), expanded_face)
-        overlap_face = iou >= PHONE_IOU_WITH_FACE_THRESHOLD
-
-        if near_face or overlap_face:
+        if center_in_box((cx, cy), expanded_face) or iou >= PHONE_IOU_WITH_FACE_THRESHOLD:
             return True, det
-
     return False, None
 
+# ==============================================================================
+# 5. CÁC HÀM TRUYỀN DỮ LIỆU BLYNK
+# ==============================================================================
+def send_data_to_blynk(blynk_obj, is_enabled, current_status):
+    """Gửi toàn bộ dữ liệu cuối cùng lên Blynk trước khi thoát chương trình."""
+    global count1, count2, count3, count4, count5
 
+    print("\n" + "=" * 60)
+    print("[BLYNK] ĐANG GỬI DỮ LIỆU CUỐI CÙNG TRƯỚC KHI THOÁT...")
+    print(f"  - Pin V0 (Trạng thái): {current_status}")
+    print(f"  - Pin V1 (Buồn ngủ): {count1}")
+    print(f"  - Pin V2 (Nhìn lệch): {count2}")
+    print(f"  - Pin V3 (Vắng mặt): {count3}")
+    print(f"  - Pin V4 (Sử dụng điện thoại): {count4}")
+    print(f"  - Pin V5 (Hành vi bất thường): {count5}")
+    print("=" * 60)
+
+    if not is_enabled or blynk_obj is None:
+        print("[BLYNK] Blynk không được cấu hình hoặc bị tắt.")
+        return
+
+    try:
+        print("[BLYNK] Đang ghi dữ liệu...")
+        try:
+            if blynk_obj.connected():
+                blynk_obj.virtual_write(0, current_status)
+                blynk_obj.virtual_write(1, count1)
+                blynk_obj.virtual_write(2, count2)
+                blynk_obj.virtual_write(3, count3)
+                blynk_obj.virtual_write(4, count4)
+                blynk_obj.virtual_write(5, count5)
+        except Exception as e:
+            print(f"[BLYNK write error] {e}")
+            
+        print("[BLYNK] Đã gửi toàn bộ. Đang chạy luồng blynk.run() 3 giây để đồng bộ...")
+
+        start_time = time.time()
+        while time.time() - start_time < 3.0:
+            blynk_obj.run()
+            time.sleep(0.1)
+        print("[BLYNK] Gửi dữ liệu cuối cùng hoàn tất!")
+    except Exception as e:
+        print(f"[ERROR] Lỗi gửi dữ liệu cuối cùng: {e}")
+
+
+def increment_counter(pin, blynk_obj, is_enabled):
+    """Tăng biến đếm và gửi thời gian thực lên Blynk."""
+    global count1, count2, count3, count4, count5
+    val = 0
+    if pin == 1:
+        count1 += 1
+        val = count1
+    elif pin == 2:
+        count2 += 1
+        val = count2
+    elif pin == 3:
+        count3 += 1
+        val = count3
+    elif pin == 4:
+        count4 += 1
+        val = count4
+    elif pin == 5:
+        count5 += 1
+        val = count5
+
+    if is_enabled and blynk_obj is not None:
+        try:
+            if blynk_obj.connected():
+                blynk_obj.virtual_write(pin, val)
+                print(f"[BLYNK Real-time] Đã gửi V{pin} = {val}")
+        except Exception as e:
+            print(f"[BLYNK] Lỗi gửi thời gian thực V{pin}: {e}")
+# ==============================================================================
+# 6. TIẾN TRÌNH CHÍNH (MAIN FUNCTION)
+# ==============================================================================
 def main():
+    global system_state, cap, blynk, blynk_enabled, status
+    global count1, count2, count3, count4, count5
+
+    # Đăng ký Signal OS để dọn dẹp hệ thống khi tắt
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    # Kiểm tra Internet trước khi khởi tạo Blynk
+    if not check_internet():
+        print("[ERROR] Raspberry Pi khong co internet")
+        return
+
+    last_blynk_status = ""
+    last_blynk_send_time = time.time()
+
+    if BLYNK_AUTH_TOKEN not in ["", "YOUR_BLYNK_AUTH_TOKEN"]:
+        try:
+            import blynklib
+
+            print("[BLYNK] Dang khoi tao ket noi...")
+            BLYNK_SERVER = "blynk.cloud"
+
+            try:
+                # Thử kết nối SSL (Cổng 443) trước
+                print("[BLYNK] Dang thu ket noi bao mat (SSL Cong 443)...")
+                blynk = blynklib.Blynk(
+                    BLYNK_AUTH_TOKEN,
+                    server=BLYNK_SERVER,
+                    port=443
+                )
+                print("[BLYNK] Da tao client (SSL)")
+
+                # Test kết nối SSL trong 5 giây
+                timeout = time.time() + 5
+                connected = False
+
+                while time.time() < timeout:
+                    blynk.run()
+                    time.sleep(0.1)
+                    try:
+                        if blynk.connected():
+                            connected = True
+                            break
+                    except:
+                        pass
+
+                # Nếu SSL thất bại, chuyển sang chế độ không bảo mật (Cổng 80)
+                if not connected:
+                    print("[BLYNK] SSL Timeout. Dang thu ket noi khong bao mat (TCP Cong 80)...")
+                    blynk = blynklib.Blynk(
+                        BLYNK_AUTH_TOKEN,
+                        server=BLYNK_SERVER,
+                        port=80,
+                        insecure=True
+                    )
+                    print("[BLYNK] Da tao client (Insecure)")
+                    
+                    timeout = time.time() + 5
+                    while time.time() < timeout:
+                        blynk.run()
+                        time.sleep(0.1)
+                        try:
+                            if blynk.connected():
+                                connected = True
+                                break
+                        except:
+                            pass
+
+                if connected:
+                    print("[BLYNK] Ket noi thanh cong!")
+                    blynk_enabled = True
+                else:
+                    print("[BLYNK] Timeout ket noi (ca SSL va Insecure)")
+                    blynk_enabled = False
+                    blynk = None
+
+            except Exception as e:
+                print(f"[BLYNK ERROR] {e}")
+                blynk_enabled = False
+                blynk = None
+
+        except ImportError:
+            print("[ERROR] Chua cai blynklib. Hay chay: pip install blynk-library-python")
+        except Exception as e:
+            print(f"[ERROR] Loi Blynk: {e}")
+            blynk_enabled = False
+            blynk = None
+    else:
+        print("[WARN] Chua cau hinh BLYNK_AUTH_TOKEN")
+
+    # ==========================================================================
+    # Khởi tạo camera và model
+    # ==========================================================================
     mp_face_mesh = mp.solutions.face_mesh
     phone_model, _ = load_phone_model()
 
-    cap = cv2.VideoCapture(CAMERA_INDEX)
+    # Sử dụng CAP_V4L2 tối ưu cho driver camera trên Raspberry Pi
+    cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_V4L2)
     if not cap.isOpened():
         raise RuntimeError("Khong mo duoc webcam. Kiem tra CAMERA_INDEX hoac quyen camera.")
 
-    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
-    # ===== STARTUP LIGHT CHECK =====
-    # Doc 1 frame de canh bao som neu moi truong qua toi, tranh user
-    # phai cho 1.5s moi biet anh sang khong du de giam sat.
+    # Đọc thử frame đầu để cảnh báo nếu phòng tối
     ok_startup, startup_frame = cap.read()
     if ok_startup:
         is_low_startup, mean_startup, std_startup = check_lighting(
             startup_frame, LOW_LIGHT_BRIGHTNESS_THRESHOLD, LOW_LIGHT_NOISE_THRESHOLD
         )
         if is_low_startup:
-            print(
-                f"[CANH BAO] Anh sang yeu khi khoi dong "
-                f"(mean={mean_startup:.0f}, std={std_startup:.0f}). "
-                f"Nen cai thien anh sang truoc khi giam sat."
-            )
+            print(f"[CANH BAO] Anh sang yeu. mean={mean_startup:.0f}, std={std_startup:.0f}")
 
-    # ===== TIMER STATE =====
+    # ===== BIẾN THỜI GIAN THEO DÕI TRẠNG THÁI =====
     eye_closed_since = None
     yawn_since = None
     distracted_since = None
     no_face_since = None
-
-    # Tien bo sung
     tilt_since = None
-    tilt_state = False
     yaw_history = []
     prev_face_center = None
     move_since = None
     last_frame_time = time.time()
- 
-    
     phone_since = None
     low_light_since = None
     last_alert_time = 0.0
     partial_face_since = None
     pick_object_since = None
-
-    # Cache cho lighting check (tai su dung khi skip frame de tiet kiem CPU)
     is_low_light = False
     light_mean = 0.0
     light_std = 0.0
 
-    # ===== HEAD POSE STATE =====
+    # ===== HEAD POSE STATE (TƯ THẾ ĐẦU) =====
     prev_rvec = None
     prev_tvec = None
     smooth_pitch = None
     smooth_yaw = None
     smooth_roll = None
-
-    # ===== CALIBRATION STATE =====
     base_pitch = None
     base_yaw = None
     base_roll = None
     calibration_start = None
     calibration_samples = []
 
-    # ===== HYSTERESIS STATE =====
+    # ===== HYSTERESIS STATE (TRÁNH DAO ĐỘNG CẬP RẬP) =====
     distracted_state = False
     head_drop_state = False
-    
-    # =====  CAMERA FAILURE STATE =====
     camera_fail_count = 0
 
-    # ===== FRAME / FPS =====
+    # ===== BIẾN FPS =====
     frame_count = 0
     cached_phone_dets = []
     fps_start = time.time()
     fps_counter = 0
     fps_display = 0.0
 
+    # ===== TRẠNG THÁI CẢNH BÁO ĐỂ CHỐNG TỰ TĂNG BỘ ĐẾM =====
+    state_eye_closed_alert = False
+    state_yawn_alert = False
+    state_head_drop_drowsy_alert = False
+    state_distracted_alert = False
+    state_no_face_alert = False
+    state_phone_alert = False
+    state_partial_face_alert = False
+    state_pick_object_alert = False
+    state_tilt_alert = False
+    state_move_alert = False
+
     with mp_face_mesh.FaceMesh(
-       # tatic_image_mode=False,
-        max_num_faces=1,
-        refine_landmarks=True,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
+        max_num_faces=1, refine_landmarks=True,
+        min_detection_confidence=0.5, min_tracking_confidence=0.5
     ) as face_mesh:
-        while True:
+
+        while system_state == "RUNNING":
+            # Duy trì kết nối Blynk và tự động Reconnect trong luồng chính
+            if blynk_enabled and blynk is not None:
+                try:
+                    blynk.run()
+                    try:
+                        if not blynk.connected():
+                            print("[BLYNK] Dang reconnect...")
+                            time.sleep(2)
+                    except:
+                        pass
+                except Exception as e:
+                    print(f"[BLYNK] Mat ket noi: {e}")
+
             ok, frame = cap.read()
             if not ok or frame is None:
                 camera_fail_count += 1
-                print(f"[WARN] Khong doc duoc frame ({camera_fail_count}/{CAMERA_RETRY_LIMIT})")
                 if camera_fail_count >= CAMERA_RETRY_LIMIT:
                     print("[ERROR] Mat ket noi camera. Dang thu ket noi lai...")
                     cap.release()
                     time.sleep(2.0)
-                    cap = cv2.VideoCapture(CAMERA_INDEX)
+                    cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_V4L2)
                     camera_fail_count = 0
                     if not cap.isOpened():
                         print("[ERROR] Khong the ket noi lai camera. Thoat.")
                         break
                 continue
 
-            camera_fail_count = 0  # Reset khi doc frame thanh cong
-
+            camera_fail_count = 0
             frame = cv2.flip(frame, 1)
             frame_h, frame_w = frame.shape[:2]
-            now = time.time()  # FIX: Gan timestamp som de cac block phia sau dung duoc
+            now = time.time()
 
-            # ===== KIEM TRA ANH SANG (dinh ky moi N frame de tiet kiem CPU) =====
-            # Anh sang thuc te it khi thay doi dot ngot, nen khong can check moi frame.
-            # frame_count=0 o lan dau -> 0 % N == 0 -> luon check o iteration dau tien.
-            # Khi mat khuon mat se force re-check ngay lap tuc o block "else" ben duoi.
+            # Định kỳ kiểm tra ánh sáng để giảm tải CPU
             if frame_count % LIGHT_CHECK_EVERY_N_FRAMES == 0:
                 is_low_light, light_mean, light_std = check_lighting(
-                    frame,
-                    LOW_LIGHT_BRIGHTNESS_THRESHOLD,
-                    LOW_LIGHT_NOISE_THRESHOLD
+                    frame, LOW_LIGHT_BRIGHTNESS_THRESHOLD, LOW_LIGHT_NOISE_THRESHOLD
                 )
-            if is_low_light:
-                if low_light_since is None:
-                    low_light_since = now
-            else:
+            if is_low_light and low_light_since is None:
+                low_light_since = now
+            elif not is_low_light:
                 low_light_since = None
 
-            # ===== FPS COUNTER =====
+            # Tính toán FPS hiển thị
             frame_count += 1
             fps_counter += 1
-            elapsed_fps = now - fps_start
-            if elapsed_fps >= 1.0:
-                fps_display = fps_counter / elapsed_fps
-                fps_counter = 0
-                fps_start = now
+            if now - fps_start >= 1.0:
+                fps_display = fps_counter / (now - fps_start)
+                fps_counter, fps_start = 0, now
 
-            # ===== PHONE DETECTION (chay moi N frame de tiet kiem CPU) =====
-            if USE_PHONE_DETECTION and phone_model is not None:
-                if frame_count % PHONE_DETECT_EVERY_N_FRAMES == 0:
-                    cached_phone_dets = detect_phone(phone_model, frame)
+            # YOLO Phát hiện điện thoại định kỳ
+            if USE_PHONE_DETECTION and phone_model is not None and frame_count % PHONE_DETECT_EVERY_N_FRAMES == 0:
+                cached_phone_dets = detect_phone(phone_model, frame)
 
-            # ===== FACE MESH =====
+            # Xử lý FaceMesh phát hiện khuôn mặt
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = face_mesh.process(rgb)
 
             status = "Tap trung"
             status_color = (0, 255, 0)
             alert_messages = []
-
-            ear = 0.0
-            mar = 0.0
-            pitch_rel = 0.0
-            yaw_rel = 0.0
-            roll_rel = 0.0
+            ear, mar, pitch_rel, yaw_rel, roll_rel = 0.0, 0.0, 0.0, 0.0, 0.0
             current_face_box = None
 
             if results.multi_face_landmarks:
                 no_face_since = None
+                state_no_face_alert = False
+
                 face_landmarks = results.multi_face_landmarks[0]
+                face_points = [(lm.x * frame_w, lm.y * frame_h) for lm in face_landmarks.landmark]
 
-                # Quy doi tat ca landmark sang toa do pixel
-                face_points = []
-                for lm in face_landmarks.landmark:
-                    x = lm.x * frame_w
-                    y = lm.y * frame_h
-                    face_points.append((x, y))
-
-                # ===== TINH EAR / MAR =====
                 left_eye = [face_points[i] for i in LEFT_EYE_IDX]
                 right_eye = [face_points[i] for i in RIGHT_EYE_IDX]
-
-                ear_left = eye_aspect_ratio(left_eye)
-                ear_right = eye_aspect_ratio(right_eye)
-                ear = (ear_left + ear_right) / 2.0
+                ear = (eye_aspect_ratio(left_eye) + eye_aspect_ratio(right_eye)) / 2.0
                 mar = mouth_aspect_ratio(face_points)
 
                 x_min, y_min, x_max, y_max, box_w, box_h = get_face_box(face_points)
                 face_size = min(box_w, box_h)
                 current_face_box = (int(x_min), int(y_min), int(x_max), int(y_max))
 
-                # ===== TC-002: CHI XUAT HIEN MOT PHAN TRONG KHUNG HINH =====
-                partial_face_now = is_partial_face(
-                    current_face_box,
-                    frame_w,
-                    frame_h,
-                    PARTIAL_FACE_MARGIN_PX
-                )
-
-                if partial_face_now:
-                    if partial_face_since is None:
-                        partial_face_since = now
-                else:
+                # TC-002: Chỉ xuất hiện một phần mặt ở rìa khung hình (Hành vi bất thường V5)
+                partial_face_now = is_partial_face(current_face_box, frame_w, frame_h, PARTIAL_FACE_MARGIN_PX)
+                if partial_face_now and partial_face_since is None:
+                    partial_face_since = now
+                elif not partial_face_now:
                     partial_face_since = None
 
                 if partial_face_since is not None and (now - partial_face_since) >= PARTIAL_FACE_SECONDS:
                     alert_messages.append("HIEN DIEN: chi xuat hien mot phan trong khung hinh")
+                    if not state_partial_face_alert:
+                        increment_counter(5, blynk, blynk_enabled)
+                        state_partial_face_alert = True
+                else:
+                    state_partial_face_alert = False
 
+                # Ước lượng tư thế đầu (Head Pose)
                 pose_valid = False
-                pose = None
-
-                # ===== HEAD POSE (chi tinh khi mat du lon) =====
                 if face_size >= MIN_FACE_BOX_SIZE:
                     pose = estimate_head_pose(face_points, frame_w, frame_h, prev_rvec, prev_tvec)
                     if pose is not None:
                         pose_valid = True
-                        prev_rvec = pose["rvec"]
-                        prev_tvec = pose["tvec"]
-
-                        raw_pitch = pose["pitch"]
-                        raw_yaw = pose["yaw"]
-                        raw_roll = pose["roll"]
-
-                        # Clamp truoc khi smooth de outlier khong "o nhiem" lich su EMA
-                        raw_pitch = clamp_angle_jump(smooth_pitch, raw_pitch, MAX_ANGLE_JUMP)
-                        raw_yaw = clamp_angle_jump(smooth_yaw, raw_yaw, MAX_ANGLE_JUMP)
-                        raw_roll = clamp_angle_jump(smooth_roll, raw_roll, MAX_ANGLE_JUMP)
-
+                        prev_rvec, prev_tvec = pose["rvec"], pose["tvec"]
+                        raw_pitch = clamp_angle_jump(smooth_pitch, pose["pitch"], MAX_ANGLE_JUMP)
+                        raw_yaw = clamp_angle_jump(smooth_yaw, pose["yaw"], MAX_ANGLE_JUMP)
+                        raw_roll = clamp_angle_jump(smooth_roll, pose["roll"], MAX_ANGLE_JUMP)
                         smooth_pitch = smooth_value(smooth_pitch, raw_pitch, HEAD_POSE_ALPHA)
                         smooth_yaw = smooth_value(smooth_yaw, raw_yaw, HEAD_POSE_ALPHA)
                         smooth_roll = smooth_value(smooth_roll, raw_roll, HEAD_POSE_ALPHA)
 
-                        # ===== CALIBRATION POSE CHUAN =====
+                        # Hiệu chỉnh tư thế đầu lúc bắt đầu (Calibration)
                         if base_pitch is None or base_yaw is None or base_roll is None:
                             if calibration_start is None:
                                 calibration_start = now
                                 calibration_samples = []
-
                             calibration_samples.append((smooth_pitch, smooth_yaw, smooth_roll))
-                            elapsed = now - calibration_start
-
                             status = "Dang hieu chinh pose... giu dau thang"
                             status_color = (255, 255, 0)
-
-                            if elapsed >= CALIBRATION_SECONDS and len(calibration_samples) >= 15:
+                            if now - calibration_start >= CALIBRATION_SECONDS and len(calibration_samples) >= 15:
                                 base_pitch, base_yaw, base_roll = median_of_tuples(calibration_samples)
 
-                        # Tinh goc tuong doi so voi baseline ca nhan
                         if base_pitch is not None:
                             pitch_rel = normalize_angle(smooth_pitch - base_pitch)
                             yaw_rel = normalize_angle(smooth_yaw - base_yaw)
                             roll_rel = normalize_angle(smooth_roll - base_roll)
-
                         cv2.line(frame, pose["nose_tip"], pose["nose_direction"], (255, 255, 0), 2)
                     else:
-                        prev_rvec = None
-                        prev_tvec = None
+                        prev_rvec, prev_tvec = None, None
 
-                # Ve cac landmark quan trong de debug
-                key_ids = LEFT_EYE_IDX + RIGHT_EYE_IDX + [p for pair in MOUTH_TOP_BOTTOM for p in pair] + list(MOUTH_LEFT_RIGHT)
-                key_ids = sorted(set(key_ids + list(HEAD_POSE_LANDMARKS.values())))
-
+                # Vẽ các điểm mốc chính lên khuôn mặt
+                key_ids = sorted(set(
+                    LEFT_EYE_IDX + RIGHT_EYE_IDX +
+                    [p for pair in MOUTH_TOP_BOTTOM for p in pair] +
+                    list(MOUTH_LEFT_RIGHT) +
+                    list(HEAD_POSE_LANDMARKS.values())
+                ))
                 for idx in key_ids:
-                    x, y = face_points[idx]
-                    cv2.circle(frame, (int(x), int(y)), 1, (0, 255, 255), -1)
+                    cv2.circle(frame, (int(face_points[idx][0]), int(face_points[idx][1])), 1, (0, 255, 255), -1)
 
-                # ===== CAP NHAT TIMER =====
                 eye_closed = ear < EAR_THRESHOLD
                 yawning = mar > MAR_THRESHOLD
 
-                eye_closed_since = now if eye_closed and eye_closed_since is None else (eye_closed_since if eye_closed else None)
-                yawn_since = now if yawning and yawn_since is None else (yawn_since if yawning else None)
+                if eye_closed and eye_closed_since is None:
+                    eye_closed_since = now
+                elif not eye_closed:
+                    eye_closed_since = None
 
-                distracted_now = False
-                head_drop_now = False
+                if yawning and yawn_since is None:
+                    yawn_since = now
+                elif not yawning:
+                    yawn_since = None
 
-                # ===== HYSTERESIS CHO HEAD POSE =====
+                distracted_now, head_drop_now = False, False
                 if pose_valid and base_pitch is not None:
-                    yaw_limit = YAW_EXIT_THRESHOLD if distracted_state else YAW_ENTER_THRESHOLD
-                    distracted_now = abs(yaw_rel) > yaw_limit
-
-                    pitch_limit = PITCH_EXIT_THRESHOLD if head_drop_state else PITCH_ENTER_THRESHOLD
-                    head_drop_now = (HEAD_DROP_SIGN * pitch_rel) > pitch_limit
-
+                    distracted_now = abs(yaw_rel) > (YAW_EXIT_THRESHOLD if distracted_state else YAW_ENTER_THRESHOLD)
+                    head_drop_now = (HEAD_DROP_SIGN * pitch_rel) > (PITCH_EXIT_THRESHOLD if head_drop_state else PITCH_ENTER_THRESHOLD)
                     distracted_state = distracted_now
                     head_drop_state = head_drop_now
 
-                    # Tien bo sung
-                    # 1. KIEM TRA NGHIENG DAU (Roll)
+                    # Nghiêng đầu bất thường (Hành vi bất thường V5)
                     if abs(smooth_roll) > TILT_THRESHOLD:
-                        if tilt_since is None: tilt_since = now
+                        if tilt_since is None:
+                            tilt_since = now
                         elif (now - tilt_since) > 1.5:
                             alert_messages.append("CANH BAO: Nghieng dau bat thuong")
+                            if not state_tilt_alert:
+                                increment_counter(5, blynk, blynk_enabled)
+                                state_tilt_alert = True
                     else:
                         tilt_since = None
+                        state_tilt_alert = False
 
-                    # 2. KIEM TRA LAC DAU (Yaw)
+                    # Lắc đầu liên tục (Hành vi bất thường V5)
                     yaw_history.append((now, smooth_yaw))
-                    # Xoa cac du lieu cu hon 2 giay
-                    yaw_history = [h for h in yaw_history if now - h[0] < 2.0] 
+                    yaw_history = [h for h in yaw_history if now - h[0] < 2.0]
                     if len(yaw_history) > 5:
                         shakes = 0
                         yaws = [h[1] for h in yaw_history]
-                        last_peak = yaws[0]
-                        last_dir = 0
+                        last_peak, last_dir = yaws[0], 0
                         for val in yaws[1:]:
                             if abs(val - last_peak) > SHAKE_THRESHOLD:
                                 current_dir = 1 if val > last_peak else -1
                                 if last_dir != 0 and current_dir != last_dir:
                                     shakes += 1
-                                last_dir = current_dir
-                                last_peak = val
+                                last_dir, last_peak = current_dir, val
                         if shakes >= SHAKE_COUNT_LIMIT:
                             alert_messages.append("CANH BAO: Lac dau lien tuc")
-                            yaw_history = [] # Reset sau khi canh bao
+                            if not state_tilt_alert: # Sử dụng biến trạng thái chung cho nhóm hành vi 5
+                                increment_counter(5, blynk, blynk_enabled)
+                            yaw_history = []
 
-                    # 3. KIEM TRA DI CHUYEN QUA NHIEU
-                    # Tinh tam khuon mat (x, y)
+                    # Di chuyển vị trí khuôn mặt quá nhiều (Hành vi bất thường V5)
                     fx_center = (x_min + x_max) / 2.0 / frame_w
                     fy_center = (y_min + y_max) / 2.0 / frame_h
                     curr_center = (fx_center, fy_center)
-                    
                     is_moving = False
-                    if prev_face_center is not None:
-                        dt = now - last_frame_time
-                        if dt > 0:
-                            dist = math.sqrt((curr_center[0]-prev_face_center[0])**2 + (curr_center[1]-prev_face_center[1])**2)
-                            speed = dist / dt
-                            if speed > MOVE_SPEED_THRESHOLD:
-                                is_moving = True
-                    
+                    if prev_face_center is not None and now - last_frame_time > 0:
+                        speed = math.sqrt(
+                            (curr_center[0] - prev_face_center[0]) ** 2 +
+                            (curr_center[1] - prev_face_center[1]) ** 2
+                        ) / (now - last_frame_time)
+                        if speed > MOVE_SPEED_THRESHOLD:
+                            is_moving = True
                     prev_face_center = curr_center
                     last_frame_time = now
-                    
+
                     if is_moving:
-                        if move_since is None: move_since = now
+                        if move_since is None:
+                            move_since = now
                         elif (now - move_since) > 2.0:
                             alert_messages.append("CANH BAO: Di chuyen qua nhieu")
+                            if not state_move_alert:
+                                increment_counter(5, blynk, blynk_enabled)
+                                state_move_alert = True
                     else:
                         move_since = None
-                    
-                    # ===== TC-003: CUI XUONG NHAT DO =====
-                    # Neu dau cui manh nhung mat van mo thi coi la hanh vi cui xuong/nhat do,
-                    # khac voi ngu gat thuong di kem nham mat lau.
-                    pick_object_now = (
-                        (HEAD_DROP_SIGN * pitch_rel) > PICK_HEAD_DROP_THRESHOLD
-                        and ear >= EAR_THRESHOLD
-                    )
+                        state_move_alert = False
 
-                    if pick_object_now:
-                        if pick_object_since is None:
-                            pick_object_since = now
-                    else:
+                    # TC-003: Cúi đầu nhặt đồ (Hành vi bất thường V5)
+                    pick_object_now = (HEAD_DROP_SIGN * pitch_rel) > PICK_HEAD_DROP_THRESHOLD and ear >= EAR_THRESHOLD
+                    if pick_object_now and pick_object_since is None:
+                        pick_object_since = now
+                    elif not pick_object_now:
                         pick_object_since = None
 
                     if pick_object_since is not None and (now - pick_object_since) >= PICK_OBJECT_SECONDS:
                         alert_messages.append("HIEN DIEN: cui xuong nhat do")
+                        if not state_pick_object_alert:
+                            increment_counter(5, blynk, blynk_enabled)
+                            state_pick_object_alert = True
+                    else:
+                        state_pick_object_alert = False
 
-                distracted_since = now if distracted_now and distracted_since is None else (distracted_since if distracted_now else None)
+                if distracted_now and distracted_since is None:
+                    distracted_since = now
+                elif not distracted_now:
+                    distracted_since = None
 
-                # ===== KIEM TRA NGUONG THOI GIAN -> THEM CANH BAO =====
+                # Nhắm mắt quá lâu (Buồn ngủ V1)
                 if eye_closed_since is not None and (now - eye_closed_since) >= EYE_CLOSED_SECONDS:
                     alert_messages.append("BUON NGU: nham mat qua lau")
+                    if not state_eye_closed_alert:
+                        increment_counter(1, blynk, blynk_enabled)
+                        state_eye_closed_alert = True
+                else:
+                    state_eye_closed_alert = False
 
+                # Ngáp (Buồn ngủ V1)
                 if yawn_since is not None and (now - yawn_since) >= YAWN_SECONDS:
                     alert_messages.append("BUON NGU: phat hien ngap")
+                    if not state_yawn_alert:
+                        increment_counter(1, blynk, blynk_enabled)
+                        state_yawn_alert = True
+                else:
+                    state_yawn_alert = False
 
+                # Gục đầu nhắm mắt (Buồn ngủ V1)
                 if head_drop_now and eye_closed_since is not None and (now - eye_closed_since) >= EYE_CLOSED_SECONDS:
                     alert_messages.append("BUON NGU: guc dau va nham mat")
+                    if not state_head_drop_drowsy_alert:
+                        increment_counter(1, blynk, blynk_enabled)
+                        state_head_drop_drowsy_alert = True
+                else:
+                    state_head_drop_drowsy_alert = False
 
+                # Nhìn lệch hướng (Mất tập trung V2)
                 if distracted_since is not None and (now - distracted_since) >= DISTRACT_SECONDS:
                     alert_messages.append("MAT TAP TRUNG: nhin lech huong")
+                    if not state_distracted_alert:
+                        increment_counter(2, blynk, blynk_enabled)
+                        state_distracted_alert = True
+                else:
+                    state_distracted_alert = False
 
-                # Ve face box va cac chi so debug
+                # Vẽ hộp giới hạn khuôn mặt
                 cv2.rectangle(frame, (int(x_min), int(y_min)), (int(x_max), int(y_max)), (120, 120, 120), 1)
-
                 cv2.putText(frame, f"EAR: {ear:.3f}", (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                 cv2.putText(frame, f"MAR: {mar:.3f}", (20, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                 cv2.putText(frame, f"Pitch(rel): {pitch_rel:.1f}", (20, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
@@ -856,32 +916,11 @@ def main():
                 cv2.putText(frame, f"Partial: {partial_face_now}", (20, 270), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
                 if base_pitch is None:
-                    cv2.putText(
-                        frame,
-                        "Dang hieu chinh pose: nhin thang vao camera",
-                        (20, 300),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7,
-                        (0, 255, 255),
-                        2,
-                    )
-            else:
-                # ===== KHONG THAY MAT - RESET STATE =====
-                # FORCE RE-CHECK ANH SANG: mat khuon mat co the do anh sang yeu,
-                # neu frame nay chua check thi check ngay de chan doan dung nguyen nhan
-                # va tranh false positive "khong phat hien khuon mat".
-                if frame_count % LIGHT_CHECK_EVERY_N_FRAMES != 0:
-                    is_low_light, light_mean, light_std = check_lighting(
-                        frame,
-                        LOW_LIGHT_BRIGHTNESS_THRESHOLD,
-                        LOW_LIGHT_NOISE_THRESHOLD
-                    )
-                    if is_low_light:
-                        if low_light_since is None:
-                            low_light_since = now
-                    else:
-                        low_light_since = None
+                    cv2.putText(frame, "Dang hieu chinh pose: nhin thang vao camera",
+                                (20, 300), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
+            else:
+                # Không thấy khuôn mặt trong khung hình — reset các biến trạng thái
                 eye_closed_since = None
                 yawn_since = None
                 distracted_since = None
@@ -894,138 +933,167 @@ def main():
                 smooth_roll = None
                 distracted_state = False
                 head_drop_state = False
+                state_eye_closed_alert = False
+                state_yawn_alert = False
+                state_head_drop_drowsy_alert = False
+                state_distracted_alert = False
+                state_partial_face_alert = False
+                state_pick_object_alert = False
+                state_tilt_alert = False
+                state_move_alert = False
 
                 if no_face_since is None:
                     no_face_since = now
 
+                # Vắng mặt (Vắng mặt V3)
                 if (now - no_face_since) >= NO_FACE_SECONDS:
                     status = "Mat tap trung (Khong thay khuon mat)"
                     status_color = (0, 165, 255)
                     alert_messages.append("MAT TAP TRUNG: khong phat hien khuon mat")
+                    if not state_no_face_alert:
+                        increment_counter(3, blynk, blynk_enabled)
+                        state_no_face_alert = True
+                else:
+                    state_no_face_alert = False
 
-            # ===== PHONE USAGE LOGIC =====
-            phone_in_use = False
-            phone_det_used = None
-
+            # Xử lý phát hiện điện thoại (Điện thoại V4)
+            phone_in_use, phone_det_used = False, None
             if USE_PHONE_DETECTION and current_face_box is not None and len(cached_phone_dets) > 0:
-                phone_in_use, phone_det_used = is_phone_usage(
-                    cached_phone_dets, current_face_box, frame_w, frame_h
-                )
+                phone_in_use, phone_det_used = is_phone_usage(cached_phone_dets, current_face_box, frame_w, frame_h)
 
-            if phone_in_use:
-                if phone_since is None:
-                    phone_since = now
-            else:
+            if phone_in_use and phone_since is None:
+                phone_since = now
+            elif not phone_in_use:
                 phone_since = None
 
             if phone_since is not None and (now - phone_since) >= PHONE_USE_SECONDS:
                 alert_messages.append("MAT TAP TRUNG: dang su dung dien thoai")
+                if not state_phone_alert:
+                    increment_counter(4, blynk, blynk_enabled)
+                    state_phone_alert = True
+            else:
+                state_phone_alert = False
 
-            # Ve box dien thoai (mau magenta neu chi detect duoc, do neu dang dung)
+            # Vẽ bounding box của điện thoại phát hiện được
             for det in cached_phone_dets:
                 x1, y1, x2, y2 = det["box"]
-                conf = det["conf"]
-
-                color = (255, 0, 255)
-                if phone_det_used is not None and det["box"] == phone_det_used["box"]:
-                    color = (0, 0, 255)
-
+                color = (0, 0, 255) if (phone_det_used is not None and det["box"] == phone_det_used["box"]) else (255, 0, 255)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                cv2.putText(
-                    frame,
-                    f"Phone {conf:.2f}",
-                    (x1, max(20, y1 - 8)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    color,
-                    2,
-                )
+                cv2.putText(frame, f"Phone {det['conf']:.2f}", (x1, max(20, y1 - 8)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
-            # ===== XEP TRANG THAI THEO UU TIEN =====
+            # Phân cấp trạng thái ưu tiên hiển thị lên UI
             has_drowsy = any(msg.startswith("BUON NGU") for msg in alert_messages)
             has_phone = any("dien thoai" in msg for msg in alert_messages)
             has_distracted = any(msg.startswith("MAT TAP TRUNG") for msg in alert_messages)
             has_presence = any(msg.startswith("HIEN DIEN") for msg in alert_messages)
 
             if has_phone:
-                status = "Dang dung dien thoai"
-                status_color = (255, 0, 255)
+                status, status_color = "Dang dung dien thoai", (255, 0, 255)
             elif has_drowsy and has_distracted:
-                status = "Buon ngu + Mat tap trung"
-                status_color = (0, 0, 255)
+                status, status_color = "Buon ngu + Mat tap trung", (0, 0, 255)
             elif has_presence:
-                status = "Hien dien khong hop le"
-                status_color = (0, 165, 255)
+                status, status_color = "Hien dien khong hop le", (0, 165, 255)
             elif has_drowsy:
-                status = "Buon ngu"
-                status_color = (0, 0, 255)
+                status, status_color = "Buon ngu", (0, 0, 255)
             elif has_distracted:
-                status = "Mat tap trung"
-                status_color = (0, 165, 255)
+                status, status_color = "Mat tap trung", (0, 165, 255)
 
-            # ===== FIX: OVERRIDE STATE KHI ANH SANG YEU =====
-            # Phai chay TRUOC put_status_text de status hien thi dung ngay frame dau tien.
-            # Khi anh sang yeu, MediaPipe khong dang tin -> bo qua moi canh bao khac
-            # de tranh false positive (vd: "khong phat hien khuon mat" do toi qua).
-            low_light_active = (
-                low_light_since is not None and (now - low_light_since) >= LOW_LIGHT_SECONDS
-            )
+            # Cảnh báo ánh sáng yếu (Nếu tối quá sẽ bỏ qua phân tích tư thế/mắt)
+            low_light_active = low_light_since is not None and (now - low_light_since) >= LOW_LIGHT_SECONDS
             if low_light_active:
                 alert_messages.clear()
                 status = "Anh sang yeu - khong the giam sat"
                 status_color = (0, 165, 255)
 
-            # ===== RENDER STATUS VA ALERT MESSAGES =====
+            # ===== BLYNK STATUS REAL-TIME (V0) =====
+            # Chỉ ghi đè lên Blynk khi trạng thái thay đổi để tiết kiệm băng thông
+            if blynk_enabled and blynk is not None and status != last_blynk_status:
+                try:
+                    if blynk.connected():
+                        blynk.virtual_write(0, status)
+                        last_blynk_status = status
+                except Exception as e:
+                    print(f"[BLYNK] Loi gui status V0: {e}")
+
+            # ===== BLYNK PERIODIC SYNC (Đồng bộ toàn bộ V1-V5 mỗi 60 giây) =====
+            if blynk_enabled and blynk is not None and (now - last_blynk_send_time) >= 60.0:
+                try:
+                    if blynk.connected():
+                        print("[BLYNK] Dang gui du lieu dinh ky 1 phut (V1-V5)...")
+                        blynk.virtual_write(1, count1)
+                        blynk.virtual_write(2, count2)
+                        blynk.virtual_write(3, count3)
+                        blynk.virtual_write(4, count4)
+                        blynk.virtual_write(5, count5)
+                        last_blynk_send_time = now
+                except Exception as e:
+                    print(f"[BLYNK] Loi gui du lieu dinh ky: {e}")
+
+            # Vẽ UI overlay hiển thị chỉ số lên Frame
             put_status_text(frame, status, status_color)
-            cv2.putText(frame, f"FPS: {fps_display:.1f}", (frame_w - 160, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+            cv2.putText(frame, f"FPS: {fps_display:.1f}", (frame_w - 160, 42),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
 
+            # Bảng thống kê bộ đếm hành vi góc trên bên phải
+            cv2.rectangle(frame, (frame_w - 290, 80), (frame_w - 10, 260), (0, 0, 0), -1)
+            cv2.rectangle(frame, (frame_w - 290, 80), (frame_w - 10, 260), (0, 255, 255), 1)
+            cv2.putText(frame, "BO DEM HANH VI:", (frame_w - 270, 105), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 2)
+            cv2.putText(frame, f"V1 (Buon ngu): {count1}", (frame_w - 270, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            cv2.putText(frame, f"V2 (Nhin lech): {count2}", (frame_w - 270, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            cv2.putText(frame, f"V3 (Khong mat): {count3}", (frame_w - 270, 190), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            cv2.putText(frame, f"V4 (Dien thoai): {count4}", (frame_w - 270, 220), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            cv2.putText(frame, f"V5 (Bat thuong): {count5}", (frame_w - 270, 250), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
+            # Hiển thị tối đa 4 dòng thông tin cảnh báo ở góc dưới bên trái
             for i, msg in enumerate(alert_messages[:4]):
-                if msg.startswith("BUON NGU"):
-                    color = (0, 0, 255)
-                elif "dien thoai" in msg:
-                    color = (255, 0, 255)
-                elif msg.startswith("HIEN DIEN"):
-                    color = (0, 165, 255)
-                else:
-                    color = (0, 165, 255)
-
-                cv2.putText(
-                    frame,
-                    msg,
-                    (20, 330 + i * 30),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    color,
-                    2,
+                color = (0, 0, 255) if msg.startswith("BUON NGU") else (
+                    (255, 0, 255) if "dien thoai" in msg else (0, 165, 255)
                 )
+                cv2.putText(frame, msg, (20, 330 + i * 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
 
-            # ===== OVERLAY CANH BAO ANH SANG YEU O DAY DUOI =====
             if low_light_active:
                 cv2.rectangle(frame, (0, frame_h - 60), (frame_w, frame_h), (0, 0, 0), -1)
-                cv2.putText(
-                    frame,
-                    f"CANH BAO: Anh sang yeu (mean={light_mean:.0f}, std={light_std:.0f})",
-                    (20, frame_h - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (0, 165, 255),
-                    2,
-                )
+                cv2.putText(frame,
+                            f"CANH BAO: Anh sang yeu (mean={light_mean:.0f}, std={light_std:.0f})",
+                            (20, frame_h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 165, 255), 2)
 
-            # ===== PHAT AM THANH CANH BAO (co cooldown) =====
+            # Phát âm thanh cảnh báo ngắn (Bíp) nếu kích hoạt cảnh báo mới
             if alert_messages and (now - last_alert_time) >= ALERT_COOLDOWN_SECONDS:
                 play_alert()
                 last_alert_time = now
 
             cv2.imshow("He thong phat hien buon ngu, mat tap trung va dien thoai", frame)
 
+            # Lắng nghe phím bấm thoát (Q)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
+                print("[INFO] Nguoi dung an 'Q' de thoat. Dang dung camera...")
+                system_state = "SAVING_DATA"
                 break
 
-    cap.release()
-    cv2.destroyAllWindows()
+    # Main loop ends
+    pass
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n[INFO] Nhan tin hieu ngat KeyboardInterrupt.")
+    finally:
+        print("\n[INFO] Giai phong camera va cua so hien thi...")
+        if cap is not None:
+            try:
+                cap.release()
+            except Exception as e:
+                print(f"[ERROR] Loi giai phong camera: {e}")
+        cv2.destroyAllWindows()
+
+        # Tiến trình gửi dữ liệu cuối cùng lên Blynk khi đóng ứng dụng
+        if blynk_enabled and blynk is not None:
+            send_data_to_blynk(blynk, blynk_enabled, status)
+        else:
+            print("[BLYNK] Khong gui vi chua ket noi hoac khong co online")
+
+        print("[INFO] Da thoat he thong hoan toan.")

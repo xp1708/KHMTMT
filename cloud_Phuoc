@@ -1,20 +1,37 @@
+import blynklib
+import RPi.GPIO as GPIO
+import time
 
-[BLYNK] Da tao client
-[BLYNK] Timeout ket noi
-2026-05-28 14:52:03.030524983 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card1": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"
-2026-05-28 14:52:03.030691359 [W:onnxruntime:Default, device_discovery.cc:283 GetGpuDevices] Failed to detect devices under "/sys/class/drm/card0": device_discovery.cc:93 ReadFileContents Failed to open file: "/sys/class/drm/card0/device/vendor"
-Error in cpuinfo: prctl(PR_SVE_GET_VL) failed
-INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
-WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
-W0000 00:00:1779954723.931683    5032 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
-W0000 00:00:1779954723.984528    5031 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
-W0000 00:00:1779954728.730783    5033 landmark_projection_calculator.cc:186] Using NORM_RECT without IMAGE_DIMENSIONS is only supported for the square ROI. Provide IMAGE_DIMENSIONS or use PROJECTION_MATRIX.
-^C
-[SIGNAL] Nhan duoc tin hieu 2. Dang chuyen sang trang thai SAVING_DATA...
+# --- CẤU HÌNH ---
+BLYNK_AUTH_TOKEN = "Ii8HYbZFetp15zyfJ47NGgeCE0ErknkO"
+LED_PIN = 17  # Chân GPIO 17 (Physical Pin 11)
 
-[INFO] Nhan tin hieu ngat KeyboardInterrupt.
+# Thiết lập GPIO
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(LED_PIN, GPIO.OUT)
+GPIO.output(LED_PIN, GPIO.LOW) # Mặc định tắt LED khi khởi động
 
-[INFO] Giai phong camera va cua so hien thi...
-[BLYNK] Khong gui vi chua ket noi hoac khong co online
-[INFO] Da thoat he thong hoan toan.
-(venv) phat@phat:~/Documents/ce_comedians/project $ 
+# Khởi tạo Blynk
+blynk = blynklib.Blynk(BLYNK_AUTH_TOKEN)
+
+# Hàm xử lý khi nhấn Switch trên Blynk (V0)
+@blynk.on("V0")
+def v0_write_handler(value):
+    # value là một list, lấy phần tử đầu tiên
+    state = int(value[0])
+    if state == 1:
+        GPIO.output(LED_PIN, GPIO.HIGH)
+        print("Trạng thái: LED BẬT")
+    else:
+        GPIO.output(LED_PIN, GPIO.LOW)
+        print("Trạng thái: LED TẮT")
+
+print("Đang kết nối tới Blynk Cloud...")
+
+# Vòng lặp chính
+try:
+    while True:
+        blynk.run()
+except KeyboardInterrupt:
+    print("\nĐang đóng chương trình...")
+    GPIO.cleanup()

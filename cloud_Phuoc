@@ -4,22 +4,20 @@ import time
 
 # --- CẤU HÌNH ---
 BLYNK_AUTH_TOKEN = "Ii8HYbZFetp15zyfJ47NGgeCE0ErknkO"
-# Sử dụng thư viện gpiozero để định nghĩa LED ở chân GPIO 17
 led = LED(17) 
 
 # Khởi tạo Blynk
 blynk = blynklib.Blynk(BLYNK_AUTH_TOKEN)
 
-# Hàm xử lý khi nhấn Switch trên Blynk (V0)
-@blynk.on("V0")
-def v0_write_handler(value):
-    # value là một list, lấy phần tử đầu tiên
+# Thay vì dùng decorator @blynk.on, ta dùng phương thức này:
+@blynk.handle_event('write V0')
+def v0_write_handler(pin, value):
     state = int(value[0])
     if state == 1:
-        led.on()  # Bật LED bằng gpiozero
+        led.on()
         print("Trạng thái: LED BẬT")
     else:
-        led.off() # Tắt LED bằng gpiozero
+        led.off()
         print("Trạng thái: LED TẮT")
 
 print("Đang kết nối tới Blynk Cloud...")
@@ -30,97 +28,3 @@ try:
         blynk.run()
 except KeyboardInterrupt:
     print("\nĐang đóng chương trình...")
-    # Với gpiozero, bạn không cần gọi cleanup() vì nó tự động giải phóng tài nguyên
-
-import blynklib
-from gpiozero import LED
-import time
-
-# --- CẤU HÌNH ---
-BLYNK_AUTH_TOKEN = "Ii8HYbZFetp15zyfJ47NGgeCE0ErknkO"
-# Sử dụng thư viện gpiozero để định nghĩa LED ở chân GPIO 17
-led = LED(17) 
-
-# Khởi tạo Blynk
-blynk = blynklib.Blynk(BLYNK_AUTH_TOKEN)
-
-# Hàm xử lý khi nhấn Switch trên Blynk (V0)
-@blynk.on("V0")
-def v0_write_handler(value):
-    # value là một list, lấy phần tử đầu tiên
-    state = int(value[0])
-    if state == 1:
-        led.on()  # Bật LED bằng gpiozero
-        print("Trạng thái: LED BẬT")
-    else:
-        led.off() # Tắt LED bằng gpiozero
-        print("Trạng thái: LED TẮT")
-
-print("Đang kết nối tới Blynk Cloud...")
-
-# Vòng lặp chính
-try:
-    while True:
-        blynk.run()
-except KeyboardInterrupt:
-    print("\nĐang đóng chương trình...")
-    # Với gpiozero, bạn không cần gọi cleanup() vì nó tự động giải phóng tài nguyên
-import blynklib
-from gpiozero import LED
-import time
-
-# --- CẤU HÌNH ---
-BLYNK_AUTH_TOKEN = "Ii8HYbZFetp15zyfJ47NGgeCE0ErknkO"
-# Sử dụng thư viện gpiozero để định nghĩa LED ở chân GPIO 17
-led = LED(17) 
-
-# Khởi tạo Blynk
-blynk = blynklib.Blynk(BLYNK_AUTH_TOKEN)
-
-# Hàm xử lý khi nhấn Switch trên Blynk (V0)
-@blynk.on("V0")
-def v0_write_handler(value):
-    # value là một list, lấy phần tử đầu tiên
-    state = int(value[0])
-    if state == 1:
-        led.on()  # Bật LED bằng gpiozero
-        print("Trạng thái: LED BẬT")
-    else:
-        led.off() # Tắt LED bằng gpiozero
-        print("Trạng thái: LED TẮT")
-
-print("Đang kết nối tới Blynk Cloud...")
-
-# Vòng lặp chính
-try:
-    while True:
-        blynk.run()
-except KeyboardInterrupt:
-    print("\nĐang đóng chương trình...")
-    # Với gpiozero, bạn không cần gọi cleanup() vì nó tự động giải phóng tài nguyên
-[INFO] Đã thoát hệ thống hoàn toàn.
-(venv) phat@phat:~/Documents/ce_comedians/project $ python3 monitor.py
-/usr/lib/python3/dist-packages/gpiozero/devices.py:300: PinFactoryFallback: Falling back from lgpio: No module named '_lgpio'
-  warnings.warn(
-/usr/lib/python3/dist-packages/gpiozero/devices.py:300: PinFactoryFallback: Falling back from rpigpio: No module named '_lgpio'
-  warnings.warn(
-/usr/lib/python3/dist-packages/gpiozero/devices.py:300: PinFactoryFallback: Falling back from pigpio: No module named 'pigpio'
-  warnings.warn(
-/usr/lib/python3/dist-packages/gpiozero/devices.py:297: NativePinFactoryFallback: Falling back to the experimental pin factory NativeFactory because no other pin factory could be loaded. For best results, install RPi.GPIO or pigpio. See https://gpiozero.readthedocs.io/en/stable/api_pins.html for more information.
-  warnings.warn(NativePinFactoryFallback(native_fallback_message))
-
-        ___  __          __
-       / _ )/ /_ _____  / /__
-      / _  / / // / _ \/  '_/
-     /____/_/\_, /_//_/_/\_\
-            /___/ for Python v0.2.6
-
-Traceback (most recent call last):
-  File "/home/phat/Documents/ce_comedians/project/monitor.py", line 14, in <module>
-    @blynk.on("V0")
-     ^^^^^^^^
-AttributeError: 'Blynk' object has no attribute 'on'
-(venv) phat@phat:~/Documents/ce_comedians/project $ ^C
-(venv) phat@phat:~/Documents/ce_comedians/project $ 
-
-

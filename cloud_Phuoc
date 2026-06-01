@@ -30,10 +30,10 @@ try:
     GPIO.setmode(GPIO.BCM)
     GPIO.setwarnings(False)
 
-    LED_DROWSY  = 17   # GPIO17 - Pin 11 → LED đỏ  (Buồn ngủ)
-    LED_PHONE   = 27   # GPIO27 - Pin 13 → LED vàng (Dùng điện thoại)
-    LED_ABNORM  = 22   # GPIO22 - Pin 15 → LED xanh (Bất thường)
-    BUZZER_PIN  = 18   # GPIO18 - Pin 12 → Còi buzzer
+    LED_DROWSY  = 22   # GPIO17 - Pin 11 → LED đỏ  (Buồn ngủ)
+    LED_PHONE   = 17   # GPIO27 - Pin 13 → LED vàng (Dùng điện thoại)
+    LED_ABNORM  = 26   # GPIO22 - Pin 15 → LED xanh (Bất thường)
+    BUZZER_PIN  = 27  # GPIO18 - Pin 12 → Còi buzzer
 
     for pin in [LED_DROWSY, LED_PHONE, LED_ABNORM, BUZZER_PIN]:
         GPIO.setup(pin, GPIO.OUT)

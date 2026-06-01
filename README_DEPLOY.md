@@ -67,7 +67,7 @@ sudo apt install -y python3-gpiozero python3-lgpio
 
 Kiểm tra:
 ```bash
-python3 -c "from gpiozero import LED; from gpiozero.pins.lgpio import LGPIOFactory; print('OK')"
+/usr/bin/python3 -c "from gpiozero import LED; from gpiozero.pins.lgpio import LGPIOFactory; print('OK')"
 ```
 
 ### 3.2. Cho main.py (venv 3.11)
@@ -86,7 +86,7 @@ pip install --upgrade pip
 pip install gpiozero lgpio
 
 # 3) Test trong venv
-python3 -c "from gpiozero import LED, Buzzer; from gpiozero.pins.lgpio import LGPIOFactory; print('venv GPIO OK')"
+/usr/bin/python3 -c "from gpiozero import LED, Buzzer; from gpiozero.pins.lgpio import LGPIOFactory; print('venv GPIO OK')"
 ```
 
 **Nếu `pip install lgpio` báo lỗi `cannot find -llgpio`:**

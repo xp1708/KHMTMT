@@ -195,7 +195,7 @@ Nếu buzzer chỉ "tick" mà không kêu liên tục → nó là **passive buzz
 ```bash
 deactivate   # rời venv 3.11
 cd ~/Documents/ce_comedians/project
-python3 pi_controller.py
+/usr/bin/python3 pi_controller.py
 ```
 
 **Quan sát:**

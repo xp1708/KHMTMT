@@ -1,8 +1,7 @@
 # RUN
 ```bash
 cd ~/Documents/ce_comedians/project
-source venv/bin/activate
-python3 main.py
+/usr/bin/python3 pi_controller.py
 ```
 
 # HƯỚNG DẪN CÀI ĐẶT PROJECT - 

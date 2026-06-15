@@ -1,21 +1,17 @@
 [Unit]
 Description=Drowsiness Detection — Boot Controller (green LED + button)
-# Cho graphical session san sang truoc khi spawn main.py (can DISPLAY cho cv2.imshow)
-After=graphical-session.target
+# Cho desktop dung gan xong neu co the, nhung khong phu thuoc bat buoc
+After=graphical-session.target default.target
 Wants=graphical-session.target
-PartOf=graphical-session.target
-
+ 
 [Service]
 Type=simple
-# Chay bang Python 3.13 he thong, KHONG dung venv (controller chi can gpiozero)
-ExecStart=/usr/bin/python3 /home/phat/Documents/ce_comedians/project/pi_controller.py
-# Tu khoi dong lai neu controller crash, nhung khong loop qua nhanh
+ExecStart=/usr/bin/python3 %h/Documents/ce_comedians/project/pi_controller.py
 Restart=on-failure
 RestartSec=3
-# Cho controller thoi gian dung graceful (no se cleanup main.py truoc)
 TimeoutStopSec=15
 StandardOutput=journal
 StandardError=journal
-
+ 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=default.target

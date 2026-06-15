@@ -85,8 +85,9 @@ source venv/bin/activate
 pip install --upgrade pip
 pip install gpiozero lgpio
 
-# 3) Test trong venv
-/usr/bin/python3 -c "from gpiozero import LED, Buzzer; from gpiozero.pins.lgpio import LGPIOFactory; print('venv GPIO OK')"
+# 3) Test trong venv (LƯU Ý: dùng `python3`, KHÔNG dùng `/usr/bin/python3`
+#    vì /usr/bin/python3 sẽ trỏ vào Python 3.13 hệ thống, bypass venv)
+python3 -c "from gpiozero import LED, Buzzer; from gpiozero.pins.lgpio import LGPIOFactory; print('venv GPIO OK')"
 ```
 
 **Nếu `pip install lgpio` báo lỗi `cannot find -llgpio`:**

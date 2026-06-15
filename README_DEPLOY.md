@@ -1,7 +1,7 @@
 # Hướng dẫn triển khai — Drowsiness Detection Controller
 
 > **Mục tiêu:** biến project main.py thành sản phẩm đứng độc lập trên Pi 4:
-> cắm điện là LED xanh nháy, bấm button khởi động/tắt, có LED vàng + buzzer cảnh báo trực tiếp.
+> cắm điện là LED xanh nháy, bấm button khởi động/tắt, có LED đỏ + buzzer cảnh báo trực tiếp.
 >
 > **Môi trường:** Raspberry Pi 4 · Debian 13 (Trixie) · Python 3.13 hệ thống · venv 3.11 cho project (đã có sẵn theo `INSTALL_GUIDE_PITFALLS.md`).
 
@@ -16,7 +16,7 @@
         anode           │
    cathode ──────────────┤ GND     (pin 14 hoặc 6, 9, 20...)
 
-   LED vàng ────[330Ω]──┤ GPIO17 (pin 11)
+   LED đỏ ────[330Ω]──┤ GPIO17 (pin 11)
         anode           │
    cathode ──────────────┤ GND     (dùng GND chung)
 
@@ -45,7 +45,7 @@ Sau khi triển khai, project của bạn sẽ có thêm 3 file:
 ```
 ~/Documents/ce_comedians/project/
 ├── main.py                  ← chỉnh sửa 3 vị trí (xem mục 4)
-├── main_gpio_alert.py       ← MỚI — driver LED vàng + buzzer
+├── main_gpio_alert.py       ← MỚI — driver LED đỏ + buzzer
 ├── pi_controller.py         ← MỚI — boot controller (LED xanh + button)
 ├── pi-controller.service    ← MỚI — systemd user unit
 └── venv/                    ← venv 3.11 đã có
@@ -98,65 +98,6 @@ theo `https://abyz.me.uk/lg/download.html` (chỉ cần nếu apt thiếu).
 
 ## 4. Sửa `main.py` — chèn 3 vị trí
 
-Mở `main.py` và thêm chính xác 3 đoạn sau. **KHÔNG xóa/sửa gì khác.**
-
-### 4.1. Thêm import (ngay sau dòng `import socket` — khoảng dòng 21)
-
-```python
-import socket
-import main_gpio_alert   # ← THÊM DÒNG NÀY
-```
-
-### 4.2. Drive LED + buzzer mỗi frame
-
-Tìm đoạn này (khoảng dòng 1003–1007, sau khối `low_light_active`):
-
-```python
-            low_light_active = low_light_since is not None and (now - low_light_since) >= LOW_LIGHT_SECONDS
-            if low_light_active:
-                alert_messages.clear()
-                status = "Anh sang yeu - khong the giam sat"
-                status_color = (0, 165, 255)
-```
-
-Thêm **ngay sau** khối if đó:
-
-```python
-            # ===== DRIVE HARDWARE ALERT (LED vàng + buzzer) =====
-            main_gpio_alert.update(len(alert_messages) > 0)
-```
-
-Logic: bất kỳ alert nào (`alert_messages` không rỗng) → bật pattern.
-Khi ánh sáng yếu, `alert_messages.clear()` ở trên đã reset → LED/buzzer sẽ tắt.
-
-### 4.3. Cleanup khi thoát
-
-Tìm khối `finally:` ở cuối file (khoảng dòng 1084–1099):
-
-```python
-    finally:
-        print("\n[INFO] Giai phong camera va cua so hien thi...")
-        if cap is not None:
-            try:
-                cap.release()
-            except Exception as e:
-                print(f"[ERROR] Loi giai phong camera: {e}")
-        cv2.destroyAllWindows()
-```
-
-Thêm **ngay sau** `cv2.destroyAllWindows()`:
-
-```python
-        cv2.destroyAllWindows()
-        main_gpio_alert.cleanup()   # ← THÊM DÒNG NÀY
-```
-
-**Tại sao đặt sau destroyAllWindows?** Khi nhận SIGTERM, signal_handler raise KeyboardInterrupt
-→ rơi vào finally → camera release → cửa sổ đóng → LED/buzzer tắt → GPIO giải phóng.
-Tuần tự rõ ràng, dễ debug.
-
----
-
 ## 5. Đặt 3 file mới vào project
 
 ```bash
@@ -181,11 +122,11 @@ main_gpio_alert.cleanup()
 ```
 
 **Kết quả mong đợi:**
-- 0–2s: LED vàng nhấp nháy nhanh (chu kỳ 0.5s), buzzer im.
-- 2–4s: LED vàng + buzzer cùng nháy chậm hơn (chu kỳ 1s).
+- 0–2s: LED đỏ nhấp nháy nhanh (chu kỳ 0.5s), buzzer im.
+- 2–4s: LED đỏ + buzzer cùng nháy chậm hơn (chu kỳ 1s).
 - Sau đó: tắt hoàn toàn.
 
-Nếu LED vàng không sáng → kiểm tra chiều LED (anode/cathode), điện trở, GND chung.
+Nếu LED đỏ không sáng → kiểm tra chiều LED (anode/cathode), điện trở, GND chung.
 Nếu buzzer chỉ "tick" mà không kêu liên tục → nó là **passive buzzer**, không phải active
 (lúc đó cần đổi sang `Buzzer.beep()` với PWM — báo lại cho tôi).
 
@@ -202,7 +143,7 @@ cd ~/Documents/ce_comedians/project
 **Quan sát:**
 1. LED xanh bắt đầu nháy mỗi 1s.
 2. Bấm button → cửa sổ camera mở (qua main.py), LED xanh sáng liên tục.
-3. Bấm button lần 2 → trong vòng ≤ 8s, cửa sổ camera đóng, LED vàng + buzzer tắt sạch,
+3. Bấm button lần 2 → trong vòng ≤ 8s, cửa sổ camera đóng, LED đỏ + buzzer tắt sạch,
    LED xanh quay về nháy 1Hz.
 4. Lặp lại tùy ý.
 
@@ -267,7 +208,7 @@ Với autologin graphical, user service là lựa chọn sạch hơn rất nhi�
 Trạng thái alert:    OFF │ ON ────────────────────────────────────── │ OFF
 Thời gian (s):       ────┼─0────0.5───1───1.5───2────2.5───3────3.5──┼────
                          │                                            │
-LED vàng:           OFF │ ░▓░▓░▓░▓░▓░▓░▓░▓░▓░▓░▓░▓ │ ▓▓▓▓▓░░░░░▓▓▓▓▓░░░░░ │ OFF
+LED đỏ:             OFF │ ░▓░▓░▓░▓░▓░▓░▓░▓░▓░▓░▓░▓ │ ▓▓▓▓▓░░░░░▓▓▓▓▓░░░░░ │ OFF
                          │ ──── Phase 1 (0–2s) ──── │ ── Phase 2 (>2s) ── │
                          │ 0.25 on / 0.25 off       │ 0.5 on / 0.5 off     │
                          │ buzzer IM                │ buzzer KÊU đồng bộ   │
@@ -275,7 +216,7 @@ Buzzer:              OFF │ ─────────────────
 ```
 
 Khi `alert_messages` đột ngột rỗng (ví dụ người dùng tỉnh lại, mặt trở lại bình thường):
-→ LED vàng + buzzer tắt **ngay frame kế tiếp**, đồng hồ phase reset về 0.
+→ LED đỏ + buzzer tắt **ngay frame kế tiếp**, đồng hồ phase reset về 0.
 
 ---
 
@@ -286,7 +227,7 @@ Khi `alert_messages` đột ngột rỗng (ví dụ người dùng tỉnh lại,
 | LED xanh không nháy sau khi service start | Service chưa active hoặc lỗi GPIO | `systemctl --user status pi-controller` + `journalctl --user -u pi-controller -n 50` |
 | Bấm button không có gì | Sai pin, button hỏng, pull-up không hoạt động | Test isolated với `Button(26, pull_up=True)` |
 | `main.py` không mở cửa sổ camera | DISPLAY chưa set | Trong unit: thêm `Environment=DISPLAY=:0` (thường không cần cho user service) |
-| LED vàng/buzzer không phản ứng khi có alert | Module `main_gpio_alert` import lỗi | Trong main.py log có `[GPIO_ALERT] Khong khoi tao duoc...` |
+| LED đỏ/buzzer không phản ứng khi có alert | Module `main_gpio_alert` import lỗi | Trong main.py log có `[GPIO_ALERT] Khong khoi tao duoc...` |
 | Bấm button không tắt được main.py (treo) | `cap.release()` block | Controller sẽ SIGKILL sau 8s; tăng `SIGTERM_TIMEOUT` nếu cần |
 | GPIO bị giữ sau crash | Process trước chưa release | `sudo lgpio-info` hoặc reboot |
 | Service không tự start sau reboot | Chưa `enable`, hoặc lingering chưa bật | `systemctl --user is-enabled pi-controller`; nếu cần: `sudo loginctl enable-linger phat` |
